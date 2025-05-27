@@ -417,17 +417,14 @@ class ProxmoxVeProvisionProvider extends AbstractProvisionProvider implements Vm
 			List<String> targetNetworks = server.getInterfaces().collect { it.network.externalId }
 
 			server.getInterfaces().each { ComputeServerInterface iface ->
-				log.info("IFACE NETWORK: $iface.network.externalId")
+				log.debug("IFACE NETWORK: $iface.network.externalId")
 			}
 
 			targetDSs.each { Map<Datastore, Long> ds ->
-				log.info("VOLUME DS: $ds.datastore.externalId, $ds.size")
+				log.debug("VOLUME DS: $ds.datastore.externalId, $ds.size")
 			}
 
 			ComputeServer hvNode = getHypervisorHostByExternalId(cloud.id, nodeId)
-
-			log.info("NODE CREDS CREDS: Node: $nodeId, Host: $hvNode.sshHost, User: $hvNode.sshUsername, Pwd: $hvNode.sshPassword")
-
 			if (!hvNode.sshHost || !hvNode.sshUsername || !hvNode.sshPassword) {
 				return new ServiceResponse<ProvisionResponse>(
 					false,
