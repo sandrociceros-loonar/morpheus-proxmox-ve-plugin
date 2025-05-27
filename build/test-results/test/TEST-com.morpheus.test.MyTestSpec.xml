@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="com.morpheus.test.MyTestSpec" tests="1" skipped="0" failures="0" errors="0" timestamp="2025-05-20T07:53:12" hostname="NVDEVLAB01" time="0.107">
-  <properties/>
-  <testcase name="should say hello" classname="com.morpheus.test.MyTestSpec" time="0.107"/>
-  <system-out><![CDATA[]]></system-out>
-  <system-err><![CDATA[]]></system-err>
-</testsuite>
