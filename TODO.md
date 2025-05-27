@@ -10,3 +10,5 @@
 - [ ] Cleanup logging
 - [ ] Fix Validation display
 - [ ] Fix datastore tab on instance 
+- [ ] Add reconfigure for disks and nics
+- [ ]

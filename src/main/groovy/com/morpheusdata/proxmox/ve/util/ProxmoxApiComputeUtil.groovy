@@ -615,8 +615,31 @@ class ProxmoxApiComputeUtil {
         def nodes = callListApiV2(client, "nodes", authConfig).data
         nodes.each { Map hvHost ->
             def nodeNetworkInfo = callListApiV2(client, "nodes/$hvHost.node/network", authConfig)
-            def ipAddress = nodeNetworkInfo.data[0].address ?: nodeNetworkInfo.data[1].address
-            hvHost.ipAddress = ipAddress
+            def sortedNetworks = nodeNetworkInfo.data.sort { a, b ->
+                def aIface = a.iface
+                def bIface = b.iface
+
+                // Push null/empty iface to the bottom
+                if (!aIface && bIface) return 1
+                if (!bIface && aIface) return -1
+                if (!aIface && !bIface) return 0
+
+                // Prioritize vmbr0
+                if (aIface == 'vmbr0') return -1
+                if (bIface == 'vmbr0') return 1
+
+                // Normal alphabetical sort
+                return aIface <=> bIface
+            }
+            log.info("Sorted")
+            log.info("Sorted")
+            log.info("Sorted")
+            log.info("Sorted")
+            log.info("Sorted")
+            log.info("Sorted Networks: $sortedNetworks")
+            log.info("Sorted")
+            log.info("Sorted")
+            hvHost.ipAddress = sortedNetworks[0].address
 
             hvHost.networks = allInterfaces
                     .findAll { it.host == hvHost.node || it.host == 'all' }

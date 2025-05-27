@@ -385,17 +385,10 @@ class ProxmoxVeProvisionProvider extends AbstractProvisionProvider implements Vm
 	ServiceResponse<ProvisionResponse> runWorkload(Workload workload, WorkloadRequest workloadRequest, Map opts) {
 		log.debug("In runWorkload...")
 
-		log.info("WORKLOAD")
-		log.info("$workload")
-
-		log.info("WORKLOADREQUEST")
-		log.info("$workloadRequest")
-
-		log.info("WORKLOAD OPTS")
-		log.info("$opts")
-
-		log.info("SKIP AGENT INSTALL")
-		log.info("$opts.config.noAgentInstall")
+		log.info("WORKLOAD: \n $workload")
+		log.info("WORKLOADREQUEST: \n $workloadRequest")
+		log.info("WORKLOAD OPTS: \n $opts")
+		log.info("SKIP AGENT INSTALL: \n $opts.config.noAgentInstall")
 
 		def skipAgent = false
 		if (opts.config.noAgentInstall?.toString()?.toLowerCase() == "true") {
@@ -428,30 +421,21 @@ class ProxmoxVeProvisionProvider extends AbstractProvisionProvider implements Vm
 			}
 
 			targetDSs.each { Map<Datastore, Long> ds ->
-//				if (!ds) {
-//					ds = getDefaultDatastore(cloud.id)
-//				}
 				log.info("VOLUME DS: $ds.datastore.externalId, $ds.size")
 			}
-
-		log.info("TEST DS AUTO: ${targetDSs[0].datastore.externalId}")
-			//if (!targetDSs) {
-			//	targetDSs = [getDefaultDatastore(cloud.id)]
-			//}
 
 			ComputeServer hvNode = getHypervisorHostByExternalId(cloud.id, nodeId)
 
 			log.info("NODE CREDS CREDS: Node: $nodeId, Host: $hvNode.sshHost, User: $hvNode.sshUsername, Pwd: $hvNode.sshPassword")
 
 			if (!hvNode.sshHost || !hvNode.sshUsername || !hvNode.sshPassword) {
-
 				return new ServiceResponse<ProvisionResponse>(
-						false,
-						"SSH credentials required on host for provisioning to work. Edit the hypervisor host properties under the cloud Hosts tab.",
-						null,
-						new ProvisionResponse(
-								success: false
-						)
+					false,
+					"SSH credentials required on host for provisioning to work. Edit the hypervisor host properties under the cloud Hosts tab.",
+					null,
+					new ProvisionResponse(
+							success: false
+					)
 				)
 			}
 
@@ -554,6 +538,7 @@ class ProxmoxVeProvisionProvider extends AbstractProvisionProvider implements Vm
 //							installAgent: false,
 //							externalId: server.externalId
 //					)
+
 					new ProvisionResponse(
 							success: true,
 							skipNetworkWait: false,
