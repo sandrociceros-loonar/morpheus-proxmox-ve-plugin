@@ -541,7 +541,7 @@ class ProxmoxVeProvisionProvider extends AbstractProvisionProvider implements Vm
 							skipNetworkWait: false,
 							installAgent: false,
 							externalId: server.externalId,
-							//noAgent: skipAgent
+							noAgent: skipAgent
 					)
 			)
 		//} catch(e) {
