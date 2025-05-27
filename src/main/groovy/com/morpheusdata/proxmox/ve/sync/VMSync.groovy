@@ -119,33 +119,33 @@ class VMSync {
 
 
     private updateMatchingVMs(List<SyncTask.UpdateItem<ComputeServer, Map>> updateItems) {
-        for (def updateItem in updateItems) {
-            def existingItem = updateItem.existingItem
-            def cloudItem = updateItem.masterItem
 
-            try {
+        try {
+            for (def updateItem in updateItems) {
+                def existingItem = updateItem.existingItem
+                def cloudItem = updateItem.masterItem
 
                 ComputeCapacityInfo capacityInfo = existingItem.getComputeCapacityInfo() ?: new ComputeCapacityInfo()
 
                 Map serverFieldValueMap = [
-                    hostname: cloudItem.hostName,
-                    externalIp: cloudItem.externalIp,
-                    maxCores: cloudItem.maxcpu?.toLong(),
-                    maxStorage: cloudItem.maxdisk?.toLong(),
-                    usedStorage: cloudItem.disk?.toLong(),
-                    maxMemory: cloudItem.maxmem?.toLong(),
-                    usedMemory: cloudItem.mem.toLong(),
-                    usedCpu: cloudItem.maxcpu?.toLong(),
-                    powerState: (cloudItem.status == 'online') ? ComputeServer.PowerState.on : ComputeServer.PowerState.off
+                        hostname   : cloudItem.hostName,
+                        externalIp : cloudItem.externalIp,
+                        maxCores   : cloudItem.maxcpu?.toLong(),
+                        maxStorage : cloudItem.maxdisk?.toLong(),
+                        usedStorage: cloudItem.disk?.toLong(),
+                        maxMemory  : cloudItem.maxmem?.toLong(),
+                        usedMemory : cloudItem.mem.toLong(),
+                        usedCpu    : cloudItem.maxcpu?.toLong(),
+                        powerState : (cloudItem.status == 'online') ? ComputeServer.PowerState.on : ComputeServer.PowerState.off
                 ]
 
                 Map capacityFieldValueMap = [
-                    maxCores: cloudItem.maxcpu?.toLong(),
-                    maxStorage: cloudItem.maxdisk?.toLong(),
-                    usedStorage: cloudItem.disk?.toLong(),
-                    maxMemory: cloudItem.maxmem?.toLong(),
-                    usedMemory: cloudItem.mem.toLong(),
-                    usedCpu: cloudItem.maxcpu?.toLong(),
+                        maxCores   : cloudItem.maxcpu?.toLong(),
+                        maxStorage : cloudItem.maxdisk?.toLong(),
+                        usedStorage: cloudItem.disk?.toLong(),
+                        maxMemory  : cloudItem.maxmem?.toLong(),
+                        usedMemory : cloudItem.mem.toLong(),
+                        usedCpu    : cloudItem.maxcpu?.toLong(),
                 ]
 
                 if (ProxmoxMiscUtil.doUpdateDomainEntity(existingItem, serverFieldValueMap) ||
@@ -153,10 +153,11 @@ class VMSync {
                     existingItem.capacityInfo = capacityInfo
                     context.async.computeServer.bulkSave([existingItem]).blockingGet()
                 }
-            } catch(e) {
-                log.warn("error updating VM properties and stats: ${e}", e)
             }
+        } catch(e) {
+            log.warn("error updating VM properties and stats: ${e}", e)
         }
+
     }
 
 

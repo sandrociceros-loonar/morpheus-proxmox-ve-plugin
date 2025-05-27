@@ -4,3 +4,5 @@
 - [ ] Cleanup sync updates
 - [ ] Check agentless provision
 - [ ] Refactor ssh code to util class
+- [ ] Add resource pools
+- [ ] Add provision host
