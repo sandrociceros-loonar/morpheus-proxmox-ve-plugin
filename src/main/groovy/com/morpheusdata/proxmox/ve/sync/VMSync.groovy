@@ -93,8 +93,8 @@ class VMSync {
                 name             : cloudItem.name,
                 externalIp       : cloudItem.ip,
                 internalIp       : cloudItem.ip,
-                sshHost          : cloudItem.ip,
-                sshUsername      : 'root',
+                //sshHost          : cloudItem.ip,
+                //sshUsername      : 'root',
                 provision        : false,
                 cloud            : cloud,
                 lvmEnabled       : false,
@@ -129,7 +129,7 @@ class VMSync {
 
                 Map serverFieldValueMap = [
                         hostname   : cloudItem.hostName,
-                        externalIp : cloudItem.externalIp,
+                        externalIp : cloudItem.ip,
                         maxCores   : cloudItem.maxcpu?.toLong(),
                         maxStorage : cloudItem.maxdisk?.toLong(),
                         usedStorage: cloudItem.disk?.toLong(),

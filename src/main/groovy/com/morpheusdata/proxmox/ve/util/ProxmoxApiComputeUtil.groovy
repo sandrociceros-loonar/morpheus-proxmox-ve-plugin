@@ -612,9 +612,6 @@ class ProxmoxApiComputeUtil {
         List<Map> allInterfaces = listProxmoxNetworks(client, authConfig).data
         List<Map> allDatastores = listProxmoxDatastores(client, authConfig).data
 
-        log.info("All Interfaces $allInterfaces")
-        log.info("All Datastores: $allDatastores")
-
         def nodes = callListApiV2(client, "nodes", authConfig).data
         nodes.each { Map hvHost ->
             def nodeNetworkInfo = callListApiV2(client, "nodes/$hvHost.node/network", authConfig)
@@ -674,7 +671,7 @@ class ProxmoxApiComputeUtil {
 
     private static ServiceResponse getApiV2Token(Map authConfig) {
         def path = "access/ticket"
-        log.debug("getApiV2Token: path: ${path}")
+        //log.debug("getApiV2Token: path: ${path}")
         HttpApiClient client = new HttpApiClient()
 
         def rtn = new ServiceResponse(success: false)
@@ -692,7 +689,7 @@ class ProxmoxApiComputeUtil {
             )
             def results = client.callJsonApi(authConfig.apiUrl,"${authConfig.v2basePath}/${path}", opts, 'POST')
 
-            log.debug("getApiV2Token API request results: ${results.toMap()}")
+            //log.debug("getApiV2Token API request results: ${results.toMap()}")
             if(results?.success && !results?.hasErrors()) {
                 rtn.success = true
                 def tokenData = results.data.data

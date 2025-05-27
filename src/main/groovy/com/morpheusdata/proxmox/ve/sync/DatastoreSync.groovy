@@ -140,7 +140,7 @@ class DatastoreSync {
 
 
     private removeMissingDatastores(List<Datastore> removeItems) {
-        log.info("Remove Datastores...")
+        log.debug("Remove Datastores $removeItems...")
         morpheusContext.async.cloud.datastore.bulkRemove(removeItems).blockingGet()
     }
 }

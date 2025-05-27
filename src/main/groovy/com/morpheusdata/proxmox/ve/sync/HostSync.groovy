@@ -82,14 +82,14 @@ class HostSync {
     }
 
 
-    private addMissingHosts(Cloud cloud, Collection addList) {
+    private addMissingHosts(Cloud cloud, Collection<Map> addList) {
         log.debug "addMissingHosts: ${cloud} ${addList.size()}"
         def serverType = new ComputeServerType(code: 'proxmox-ve-node')
         def serverOs = new OsType(code: 'linux')
 
-        for(cloudItem in addList) {
+        for (cloudItem in addList) {
             try {
-                log.debug("Adding cloud host: $cloudItem")
+                log.info("Adding cloud host: $cloudItem with IP $cloudItem.ipAddress")
                 def serverConfig = [
                         account          : cloud.owner,
                         category         : "proxmox.ve.host.${cloud.id}",
@@ -98,7 +98,7 @@ class HostSync {
                         resourcePool     : null,
                         externalId       : cloudItem.node,
                         uniqueId         : "${cloud.id}.${cloudItem.node}",
-                        sshHost          : cloudItem.externalIp,
+                        sshHost          : cloudItem.ipAddress,
                         sshUsername      : hostUID,
                         sshPassword      : hostPWD,
                         status           : 'provisioned',
@@ -108,10 +108,11 @@ class HostSync {
                         serverOs         : serverOs,
                         osType           : 'linux',
                         hostname         : cloudItem.node,
-                        externalIp       : cloudItem.ipAddress
+                        externalIp       : cloudItem.ipAddress,
+                        powerState       : (cloudItem.status == 'online') ? ComputeServer.PowerState.on : ComputeServer.PowerState.off
                 ]
 
-                ComputeCapacityInfo capacityInfo = existingItem.getComputeCapacityInfo() ?: new ComputeCapacityInfo()
+                ComputeCapacityInfo capacityInfo = new ComputeCapacityInfo()
 
                 Map capacityFieldValueMap = [
                         maxCores   : cloudItem.maxcpu?.toLong(),
@@ -123,6 +124,8 @@ class HostSync {
                 ]
 
                 ComputeServer newServer = new ComputeServer(serverConfig)
+                ProxmoxMiscUtil.doUpdateDomainEntity(capacityInfo, capacityFieldValueMap)
+                newServer.capacityInfo = capacityInfo
                 log.debug("Adding Compute Server: $serverConfig")
                 if (!morpheusContext.async.computeServer.bulkCreate([newServer]).blockingGet()){
                     log.error "Error in creating host server ${newServer}"
@@ -154,11 +157,11 @@ class HostSync {
                         name        : cloudItem.node,
                         resourcePool: null,
                         uniqueId    : "${cloud.id}.${cloudItem.node}",
-                        sshHost     : cloudItem.externalIp,
+                        sshHost     : cloudItem.ipAddress,
                         sshUsername : hostUID,
                         sshPassword : hostPWD,
                         hostname    : cloudItem.hostName,
-                        externalIp  : cloudItem.externalIp,
+                        externalIp  : cloudItem.ipAddress,
                         maxCores    : cloudItem.maxcpu?.toLong(),
                         maxStorage  : cloudItem.maxdisk?.toLong(),
                         usedStorage : cloudItem.disk?.toLong(),

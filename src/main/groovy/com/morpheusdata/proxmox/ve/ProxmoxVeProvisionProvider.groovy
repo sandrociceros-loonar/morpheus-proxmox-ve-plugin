@@ -397,8 +397,9 @@ class ProxmoxVeProvisionProvider extends AbstractProvisionProvider implements Vm
 		log.info("SKIP AGENT INSTALL")
 		log.info("$opts.config.noAgentInstall")
 
-		if (opts.config.noAgentInstall == "true") {
-			log.info("NO AGENT INSTALL!!!!!")
+		def skipAgent = false
+		if (opts.config.noAgentInstall?.toString()?.toLowerCase() == "true") {
+			skipAgent = true
 			workloadRequest.cloudConfigUser = workloadRequest.cloudConfigUser
 					.readLines()
 					.findAll { !it.contains('api/server-script/agentInstall') }
@@ -537,10 +538,7 @@ class ProxmoxVeProvisionProvider extends AbstractProvisionProvider implements Vm
 			//	installAgentAfter = true
 			//}
 
-		def skipAgent = false
-		if (opts.config.noAgentInstall == "true") {
-			skipAgent = true
-		}
+
 
 
 
@@ -561,7 +559,7 @@ class ProxmoxVeProvisionProvider extends AbstractProvisionProvider implements Vm
 							skipNetworkWait: false,
 							installAgent: false,
 							externalId: server.externalId,
-							noAgent: skipAgent
+							//noAgent: skipAgent
 					)
 			)
 		//} catch(e) {
