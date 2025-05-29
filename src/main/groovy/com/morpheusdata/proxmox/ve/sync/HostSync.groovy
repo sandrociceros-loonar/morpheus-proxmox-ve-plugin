@@ -14,6 +14,9 @@ import com.morpheusdata.model.projection.ComputeServerIdentityProjection
 import com.morpheusdata.proxmox.ve.util.ProxmoxMiscUtil
 import groovy.util.logging.Slf4j
 
+/**
+ * @author Neil van Rensburg
+ */
 
 @Slf4j
 class HostSync {
@@ -26,6 +29,9 @@ class HostSync {
     private String hostUID
     private String hostPWD
 
+    /**
+     * @author Neil van Rensburg
+     */
 
     HostSync(ProxmoxVePlugin proxmoxVePlugin, Cloud cloud, HttpApiClient apiClient) {
         this.@plugin = proxmoxVePlugin

@@ -3,8 +3,9 @@
 - [X] Add Host SSH Inputs to Options
 - [X] Cleanup sync updates
 - [X] Check agentless provision
-- [ ] Refactor ssh code to util class
-- [ ] Add resource pools
+- [X] Refactor ssh code to util class
+- [X] Add resource pool sync
+- [ ] Add resource pool selection to provision (and filter datastores)
 - [ ] Add provision host
 - [X] Fix powerstate on initial host add
 - [ ] Cleanup logging
