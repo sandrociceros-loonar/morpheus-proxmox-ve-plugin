@@ -32,6 +32,7 @@ import com.morpheusdata.model.projection.DatastoreIdentity
 import com.morpheusdata.model.provisioning.HostRequest
 import com.morpheusdata.model.provisioning.WorkloadRequest
 import com.morpheusdata.model.Cloud
+import com.morpheusdata.proxmox.ve.util.ProxmoxSshUtil
 import com.morpheusdata.request.ResizeRequest
 import com.morpheusdata.response.PrepareWorkloadResponse
 import com.morpheusdata.response.ProvisionResponse
@@ -294,7 +295,7 @@ class ProxmoxVeProvisionProvider extends AbstractProvisionProvider implements Vm
 	 */
 	@Override
 	ServiceResponse validateWorkload(Map opts) {
-		log.info("VALIDATION OPTS: $opts")
+		log.debug("VALIDATION OPTS: $opts")
 		def rtn =  new ServiceResponse(true, null, [:], null)
 
 		HttpApiClient client = new HttpApiClient()
@@ -325,16 +326,20 @@ class ProxmoxVeProvisionProvider extends AbstractProvisionProvider implements Vm
 		log.debug("SELECTED NODE DATASTORES: ${proxmoxNode.datastores}")
 		log.debug("SELECTED NETWORKS: $wizardInterfaces")
 		log.debug("SELECTED NODE NETWORKS: ${proxmoxNode.networks}")
-		log.debug("SELECTED TEMPLATE DATASTORES: ${proxmoxTemplate.datastores}")
+
+		//ensure that we aren't uploading the template for the first time
+		if (proxmoxTemplate) {
+			log.debug("SELECTED TEMPLATE DATASTORES: ${proxmoxTemplate.datastores}")
 
 
-		//Check that the node can see see the template disk to copy it
-		proxmoxTemplate.datastores.each { String templateDS ->
-			if (!proxmoxNode.datastores.contains(templateDS)) {
-				log.error("Error provisioning: Selected template (virtual image) '${virtualImage.name}' disk datastore '$templateDS' is not attached to selected node '${opts.config.proxmoxNode}'.")
-				rtn.errors += [field: "imageId", msg: "Invalid instance config: Selected Virtual Image '${virtualImage.name}' disk datastore '$templateDS' is not attached to selected node '${opts.config.proxmoxNode}'."]
-			} else {
-				log.info("Datastore '$templateDS' is present and valid on proxmox node '${opts.config.proxmoxNode}'.")
+			//Check that the node can see see the template disk to copy it
+			proxmoxTemplate.datastores.each { String templateDS ->
+				if (!proxmoxNode.datastores.contains(templateDS)) {
+					log.error("Error provisioning: Selected template (virtual image) '${virtualImage.name}' disk datastore '$templateDS' is not attached to selected node '${opts.config.proxmoxNode}'.")
+					rtn.errors += [field: "imageId", msg: "Invalid instance config: Selected Virtual Image '${virtualImage.name}' disk datastore '$templateDS' is not attached to selected node '${opts.config.proxmoxNode}'."]
+				} else {
+					log.info("Datastore '$templateDS' is present and valid on proxmox node '${opts.config.proxmoxNode}'.")
+				}
 			}
 		}
 
@@ -385,10 +390,10 @@ class ProxmoxVeProvisionProvider extends AbstractProvisionProvider implements Vm
 	ServiceResponse<ProvisionResponse> runWorkload(Workload workload, WorkloadRequest workloadRequest, Map opts) {
 		log.debug("In runWorkload...")
 
-		log.info("WORKLOAD: \n $workload")
-		log.info("WORKLOADREQUEST: \n $workloadRequest")
-		log.info("WORKLOAD OPTS: \n $opts")
-		log.info("SKIP AGENT INSTALL: \n $opts.config.noAgentInstall")
+		log.debug("WORKLOAD: \n $workload")
+		log.debug("WORKLOADREQUEST: \n $workloadRequest")
+		log.debug("WORKLOAD OPTS: \n $opts")
+		log.debug("SKIP AGENT INSTALL: \n $opts.config.noAgentInstall")
 
 		def skipAgent = false
 		if (opts.config.noAgentInstall?.toString()?.toLowerCase() == "true") {
@@ -399,10 +404,10 @@ class ProxmoxVeProvisionProvider extends AbstractProvisionProvider implements Vm
 					.join('\n')
 		}
 
-		log.info("Cloud-Init User-Data User: $workloadRequest.cloudConfigUser")
+		log.debug("Cloud-Init User-Data User: $workloadRequest.cloudConfigUser")
 		log.debug("Cloud-Init User-Data Network: $workloadRequest.cloudConfigNetwork")
 
-		//try {
+		try {
 			ComputeServer server = workload.server
 			Cloud cloud = server.cloud
 			VirtualImage virtualImage = server.sourceImage
@@ -494,48 +499,20 @@ class ProxmoxVeProvisionProvider extends AbstractProvisionProvider implements Vm
 			}
 
 			def installAgentAfter = false
-			log.debug("OPTS: $opts")
+			//log.debug("OPTS: $opts")
 			if(virtualImage?.isCloudInit() && workloadRequest?.cloudConfigUser) {
-				log.info(log.debug("Configuring Cloud-Init"))
-				log.info("Ensuring snippets directory on node: $nodeId")
-				//context.executeSshCommand(hvNode.sshHost, 22, hvNode.sshUsername, hvNode.sshPassword, "mkdir -p /var/lib/vz/snippets", "", "", "", false, LogLevel.info, true, null, false).blockingGet()
-				runSshCmd(hvNode, "mkdir -p /var/lib/vz/snippets")
-				log.info("Creating cloud-init user-data file on hypervisor node: /var/lib/vz/snippets/${rtnClone.data.vmId}-cloud-init-user-data.yml")
-				ProxmoxMiscUtil.sftpCreateFile(hvNode.sshHost, 22, hvNode.sshUsername, hvNode.sshPassword, "/var/lib/vz/snippets/${rtnClone.data.vmId}-cloud-init-user-data.yml", workloadRequest.cloudConfigUser, null)
-				log.info("Creating cloud-init user-data file on hypervisor node: /var/lib/vz/snippets/${rtnClone.data.vmId}-cloud-init-network.yml")
-				ProxmoxMiscUtil.sftpCreateFile(hvNode.sshHost, 22, hvNode.sshUsername, hvNode.sshPassword, "/var/lib/vz/snippets/${rtnClone.data.vmId}-cloud-init-network.yml", workloadRequest.cloudConfigNetwork, null)
-				log.info("Creating cloud-init vm disk: ${targetDSs[0].datastore.externalId}:cloudinit")
-				//context.executeSshCommand(hvNode.sshHost, 22, hvNode.sshUsername, hvNode.sshPassword, "qm set ${rtnClone.data.vmId} --ide2 $targetDSs[0].datastore.externalId:cloudinit", "", "", "", false, LogLevel.info, true, null, false).blockingGet()
-				runSshCmd(hvNode, "qm set ${rtnClone.data.vmId} --ide2 ${targetDSs[0].datastore.externalId}:cloudinit")
-				log.info("Mounting cloud-init data to disk...")
-				String ciMountCommand = "qm set ${rtnClone.data.vmId} --cicustom \"user=local:snippets/${rtnClone.data.vmId}-cloud-init-user-data.yml,network=local:snippets/${rtnClone.data.vmId}-cloud-init-network.yml\""
-				//context.executeSshCommand(hvNode.sshHost, 22, hvNode.sshUsername, hvNode.sshPassword, ciMountCommand, "", "", "", false, LogLevel.info, true, null, false).blockingGet()
-				runSshCmd(hvNode, ciMountCommand)
+				log.debug(log.debug("Configuring Cloud-Init"))
+				ProxmoxSshUtil.createCloudInitDrive(context, hvNode, workloadRequest, rtnClone.data.vmId, targetDSs[0].datastore.externalId)
 			} else {
 				log.info("Non Cloud-Init deployment...")
 			}
 
-			//if (opts.config.noAgentInstall) {
-			//	installAgentAfter = true
-			//}
-
-
-
-
-
-		ProxmoxApiComputeUtil.startVM(client, authConfig, nodeId, rtnClone.data.vmId)
+			ProxmoxApiComputeUtil.startVM(client, authConfig, nodeId, rtnClone.data.vmId)
 
 			return new ServiceResponse<ProvisionResponse>(
 					true,
 					"Provisioned",
 					null,
-//					new ProvisionResponse(
-//							success: true,
-//							skipNetworkWait: false,
-//							installAgent: false,
-//							externalId: server.externalId
-//					)
-
 					new ProvisionResponse(
 							success: true,
 							skipNetworkWait: false,
@@ -544,15 +521,15 @@ class ProxmoxVeProvisionProvider extends AbstractProvisionProvider implements Vm
 							noAgent: skipAgent
 					)
 			)
-		//} catch(e) {
-		//	log.info("Error during provisioning: ${e}")
-		//	return new ServiceResponse<ProvisionResponse>(
-		//			false,
-		//			"Provisioning failed: ${e}",
-		//			null,
-		//			new ProvisionResponse(success: false)
-		//	)
-		//}
+		} catch(e) {
+			log.error("Error during provisioning: ${e}")
+			return new ServiceResponse<ProvisionResponse>(
+					false,
+					"Provisioning failed: ${e}",
+					null,
+					new ProvisionResponse(success: false)
+			)
+		}
 	}
 
 
@@ -739,46 +716,17 @@ class ProxmoxVeProvisionProvider extends AbstractProvisionProvider implements Vm
 				}
 			}
 
-			log.info("IMAGE UPLOAD CREDS: Image ID: $imageExternalId, Node: $hvNode.sshHost, User $hvNode.sshUsername, Pwd $hvNode.sshPassword")
-
-			if (!imageExternalId) { //If its userUploaded and still needs to be uploaded to cloud
+			if (!imageExternalId) { //If its userUploaded to the Morpheus appliance and still needs to be uploaded to cloud
 				// Create the image
 				def cloudFiles = context.async.virtualImage.getVirtualImageFiles(virtualImage).blockingGet()
 				log.debug("CloudFiles: $cloudFiles")
-				def imageFile = cloudFiles?.find { cloudFile ->
+				String imageFile = cloudFiles?.find { cloudFile ->
 						cloudFile.name.toLowerCase().endsWith(".qcow2") ||
 						cloudFile.name.toLowerCase().endsWith(".img") ||
 						cloudFile.name.toLowerCase().endsWith(".raw")
 				}
 				log.debug("ImageFile: $imageFile")
-				def contentLength = imageFile?.getContentLength()
-
-
-
-				//create qcow2 template directory on proxmox
-				log.debug("Ensuring Image Directory on node: $hvNode.sshHost")
-				def dirOut = context.executeSshCommand(hvNode.sshHost, 22, hvNode.sshUsername, hvNode.sshPassword, "mkdir -p $remoteImageDir", "", "", "", false, LogLevel.info, true, null, false).blockingGet()
-				log.debug("Dir create SSH Task \"mkdir -p $remoteImageDir\" results: ${dirOut.toMap().toString()}")
-
-				//sftp .qcow2 file to the directory on proxmox server
-				log.debug("uploading Image $imagePathPrefix/$imageFile to $hvNode.sshHost:$remoteImageDir")
-				ProxmoxMiscUtil.sftpUpload(hvNode.sshHost, 22, hvNode.sshUsername, hvNode.sshPassword, "$imagePathPrefix/$imageFile", remoteImageDir, null)
-
-				//create blank vm template on proxmox
-				ServiceResponse templateResp = ProxmoxApiComputeUtil.createImageTemplate(client, authConfig, virtualImage.name, hvNode.externalId, 1, 1024L)
-				log.debug("Create Image Template response data $templateResp.data")
-				imageExternalId = templateResp.data.templateId
-
-				//import the disk file to the blank vm template
-				String fileName = new File("$imageFile").getName()
-				log.debug("Executing ImportDisk command on node: qm importdisk $templateResp.data.templateId $remoteImageDir/$fileName $targetDS")
-				def diskCreateOut = context.executeSshCommand(hvNode.sshHost, 22, hvNode.sshUsername, hvNode.sshPassword, "qm importdisk $templateResp.data.templateId $remoteImageDir/$fileName $targetDS", "", "", "", false, LogLevel.info, true, null, false).blockingGet()
-				log.debug("Disk ImportDisk SSH Task \"qm importdisk $templateResp.data.templateId $remoteImageDir/$fileName $targetDS\" results: ${diskCreateOut.toMap().toString()}")
-
-				//Mount the disk
-				log.debug("Executing DiskMount SSH Task \"qm set $templateResp.data.templateId --scsi0 $targetDS:vm-$templateResp.data.templateId-disk-0\"")
-				def diskMountOut = context.executeSshCommand(hvNode.sshHost, 22, hvNode.sshUsername, hvNode.sshPassword, "qm set $templateResp.data.templateId --scsi0 $targetDS:vm-$templateResp.data.templateId-disk-0", "", "", "", false, LogLevel.info, true, null, false).blockingGet()
-				log.debug("Disk Mount SSH Task \"qm set $templateResp.data.templateId --scsi0 $targetDS:vm-$templateResp.data.templateId-disk-0\" results: ${diskMountOut.toMap().toString()}")
+				imageExternalId = ProxmoxSshUtil.uploadImageAndCreateTemplate(context, client, authConfig, cloud, virtualImage, hvNode, targetDS, imageFile)
 
 				virtualImage.externalId = imageExternalId
 				log.debug("Updating virtual image $virtualImage.name with external ID $virtualImage.externalId")
@@ -787,7 +735,7 @@ class ProxmoxVeProvisionProvider extends AbstractProvisionProvider implements Vm
 						virtualImage: virtualImage,
 						externalId  : imageExternalId,
 						imageRegion : cloud.regionCode,
-						code        : "proxmox.ve.image.${cloud.id}.$templateResp.data.templateId",
+						code        : "proxmox.ve.image.${cloud.id}.$imageExternalId",
 						internalId  : imageExternalId,
 						refId		: cloud.id,
 						refType		: 'ComputeZone',

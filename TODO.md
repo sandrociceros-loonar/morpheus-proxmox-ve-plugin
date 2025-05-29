@@ -13,3 +13,9 @@
 - [ ] Add reconfigure for disks and nics
 - [ ] Investigate "Starting determineSshRoute with hostList: []" when skipping agent
 - [ ] Fix validation errors not appearing in instance wizard
+- [ ] Improve ssh error tracking
+- [ ] Add LICENSE
+- [ ] Populate README
+- [ ] Jar Folder
+- [ ] Snapshot Backup Provider
+- [ ] Scribe resources for Morpheus OS images
