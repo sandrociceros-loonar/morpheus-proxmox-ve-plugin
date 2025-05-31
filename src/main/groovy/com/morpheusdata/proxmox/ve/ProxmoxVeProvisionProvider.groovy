@@ -141,19 +141,6 @@ class ProxmoxVeProvisionProvider extends AbstractProvisionProvider implements Vm
         Collection<OptionType> getOptionTypes() {
                 def options = []
 
-                options << new OptionType(
-                                name: 'Proxmox Node',
-                                code: 'proxmox-node',
-                                category: 'provisionType.proxmox-provision-provider',
-                                inputType: OptionType.InputType.SELECT,
-                                fieldName: 'proxmoxNode',
-                                fieldContext: 'config',
-                                fieldLabel: 'Proxmox Node',
-                                displayOrder: 0,
-                                required: true,
-                                optionSourceType: 'proxmox',
-                                optionSource: 'proxmoxNodes'
-                )
 
 		options << new OptionType(
 				name: 'skip agent install',
