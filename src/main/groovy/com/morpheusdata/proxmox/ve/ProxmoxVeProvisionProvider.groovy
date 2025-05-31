@@ -138,8 +138,22 @@ class ProxmoxVeProvisionProvider extends AbstractProvisionProvider implements Vm
 	 * @return Collection of OptionTypes
 	 */
 	@Override
-	Collection<OptionType> getOptionTypes() {
-		def options = []
+        Collection<OptionType> getOptionTypes() {
+                def options = []
+
+                options << new OptionType(
+                                name: 'Proxmox Node',
+                                code: 'proxmox-node',
+                                category: 'provisionType.proxmox-provision-provider',
+                                inputType: OptionType.InputType.SELECT,
+                                fieldName: 'proxmoxNode',
+                                fieldContext: 'config',
+                                fieldLabel: 'Proxmox Node',
+                                displayOrder: 0,
+                                required: true,
+                                optionSourceType: 'proxmox',
+                                optionSource: 'proxmoxNodes'
+                )
 
 		options << new OptionType(
 				name: 'skip agent install',
@@ -298,13 +312,19 @@ class ProxmoxVeProvisionProvider extends AbstractProvisionProvider implements Vm
 	 * message as the value.
 	 */
 	@Override
-	ServiceResponse validateWorkload(Map opts) {
-		log.debug("VALIDATION OPTS: $opts")
-		def rtn =  new ServiceResponse(true, null, [:], null)
+        ServiceResponse validateWorkload(Map opts) {
+                log.debug("VALIDATION OPTS: $opts")
+                def rtn =  new ServiceResponse(true, null, [:], null)
 
-		HttpApiClient client = new HttpApiClient()
-		Cloud cloud = context.async.cloud.get(opts.zoneId?.toLong()).blockingGet()
-		Map authConfig = plugin.getAuthConfig(cloud)
+                HttpApiClient client = new HttpApiClient()
+                Cloud cloud = context.async.cloud.get(opts.zoneId?.toLong()).blockingGet()
+                ComputeServer selectedNode = getHypervisorHostByExternalId(cloud.id, opts.config.proxmoxNode)
+                if(selectedNode && selectedNode.powerState != ComputeServer.PowerState.on) {
+                        rtn.success = false
+                        rtn.errors = [field: 'proxmoxNode', msg: 'This Proxmox node is currently inactive. Please select an active node.']
+                        return rtn
+                }
+                Map authConfig = plugin.getAuthConfig(cloud)
 
 		List<Map> wizardInterfaces = opts.networkInterfaces
 		List<Map> instanceDisks = opts.volumes
