@@ -474,13 +474,35 @@ class ProxmoxApiComputeUtil {
                     ds.nodes = "all"
                 }
 
-                Map dsInfo = callListApiV2(client, "nodes/${queryNode}/storage/${ds.storage}/status", authConfig).data
-                ds.total = dsInfo.total
-                ds.avail = dsInfo.avail
-                ds.used = dsInfo.used
-                ds.enabled = dsInfo.enabled
+                try {
+                    ServiceResponse dsInfoResponse = callListApiV2(client, "nodes/${queryNode}/storage/${ds.storage}/status", authConfig)
+                    
+                    if (dsInfoResponse.success && dsInfoResponse.data instanceof Map) {
+                        Map dsInfo = dsInfoResponse.data as Map
+                        ds.total = dsInfo.total ?: 0
+                        ds.avail = dsInfo.avail ?: 0
+                        ds.used = dsInfo.used ?: 0
+                        ds.enabled = dsInfo.enabled ?: 0
+                    } else {
+                        // Handle case where API call fails (like for offline nodes)
+                        log.warn("Failed to get storage status for ${ds.storage} on node ${queryNode}, using defaults")
+                        ds.total = 0
+                        ds.avail = 0
+                        ds.used = 0
+                        ds.enabled = 0
+                    }
 
-                validDatastores << ds
+                    validDatastores << ds
+                    
+                } catch (Exception e) {
+                    log.error("Error getting datastore status for ${ds.storage} on node ${queryNode}: ${e.message}")
+                    // Set default values and include the datastore anyway
+                    ds.total = 0
+                    ds.avail = 0
+                    ds.used = 0
+                    ds.enabled = 0
+                    validDatastores << ds
+                }
             } else {
                 log.warn("Storage ${ds} ignored...")
             }
@@ -497,27 +519,39 @@ class ProxmoxApiComputeUtil {
         List<String> hosts = getProxmoxHypervisorNodeIds(client, authConfig).data
 
         hosts.each { host ->
-            ServiceResponse hostNetworks = callListApiV2(client, "nodes/$host/network", authConfig)
-            hostNetworks.data.each { Map network ->
-                if (['bridge', 'vlan'].contains(network?.type)) {
-                    network.networkAddress = ""
-                    if (network?.cidr) {
-                        network.networkAddress = ProxmoxMiscUtil.getNetworkAddress(network.cidr)
-                    } else if (network?.address && network?.netmask) {
-                        network.networkAddress = ProxmoxMiscUtil.getNetworkAddress("$network.address/$network.netmask")
+            try {
+                ServiceResponse hostNetworks = callListApiV2(client, "nodes/$host/network", authConfig)
+                if (hostNetworks.success && hostNetworks.data) {
+                    hostNetworks.data.each { Map network ->
+                        if (['bridge', 'vlan'].contains(network?.type)) {
+                            network.networkAddress = ""
+                            if (network?.cidr) {
+                                network.networkAddress = ProxmoxMiscUtil.getNetworkAddress(network.cidr)
+                            } else if (network?.address && network?.netmask) {
+                                network.networkAddress = ProxmoxMiscUtil.getNetworkAddress("$network.address/$network.netmask")
+                            }
+                            network.host = host
+                            networks << network
+                        }
                     }
-                    network.host = host
-                    networks << network
                 }
+            } catch (Exception e) {
+                log.warn("Failed to get networks for host ${host}: ${e.message}")
             }
         }
 
-        ServiceResponse sdnNetworks = callListApiV2(client, "cluster/sdn/vnets", authConfig)
-        sdnNetworks.data.each { Map sdn ->
-            sdn.networkAddress = ''
-            sdn.iface = sdn.vnet
-            sdn.host = "all"
-            networks << sdn
+        try {
+            ServiceResponse sdnNetworks = callListApiV2(client, "cluster/sdn/vnets", authConfig)
+            if (sdnNetworks.success && sdnNetworks.data) {
+                sdnNetworks.data.each { Map sdn ->
+                    sdn.networkAddress = ''
+                    sdn.iface = sdn.vnet
+                    sdn.host = "all"
+                    networks << sdn
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Failed to get SDN networks: ${e.message}")
         }
 
         return new ServiceResponse(success: true, data: networks)
@@ -611,7 +645,7 @@ class ProxmoxApiComputeUtil {
 
 
     static ServiceResponse listProxmoxPools(HttpApiClient client, Map authConfig) {
-        log.debug("listProxmoxNetworks...")
+        log.debug("listProxmoxPools...")
         def pools = []
 
         List<Map> poolIds = callListApiV2(client, "pools", authConfig).data
@@ -645,39 +679,115 @@ class ProxmoxApiComputeUtil {
     static ServiceResponse listProxmoxHypervisorHosts(HttpApiClient client, Map authConfig) {
         log.info("listProxmoxHosts...")
 
-        List<Map> allInterfaces = listProxmoxNetworks(client, authConfig).data
-        List<Map> allDatastores = listProxmoxDatastores(client, authConfig).data
+        // Workaround: Get networks safely with error handling
+        List<Map> allInterfaces = []
+        try {
+            ServiceResponse networkResponse = listProxmoxNetworks(client, authConfig)
+            if (networkResponse?.success && networkResponse?.data) {
+                allInterfaces = networkResponse.data
+            }
+        } catch (Exception e) {
+            log.warn("Failed to get network interfaces, continuing without them: ${e.message}")
+            allInterfaces = []
+        }
+        
+        // Get datastores safely with error handling  
+        List<Map> allDatastores = []
+        try {
+            ServiceResponse datastoreResponse = listProxmoxDatastores(client, authConfig)
+            if (datastoreResponse?.success && datastoreResponse?.data) {
+                allDatastores = datastoreResponse.data
+            }
+        } catch (Exception e) {
+            log.warn("Failed to get datastores, continuing without them: ${e.message}")
+            allDatastores = []
+        }
 
         def nodes = callListApiV2(client, "nodes", authConfig).data
         nodes.each { Map hvHost ->
-            def nodeNetworkInfo = callListApiV2(client, "nodes/$hvHost.node/network", authConfig)
-            def sortedNetworks = nodeNetworkInfo.data.sort { a, b ->
-                def aIface = a.iface
-                def bIface = b.iface
+            try {
+                def nodeNetworkInfo = callListApiV2(client, "nodes/$hvHost.node/network", authConfig)
+                
+                // Check if network info was retrieved successfully
+                if (!nodeNetworkInfo.success || !nodeNetworkInfo.data) {
+                    log.warn("Failed to retrieve network info for node ${hvHost.node}, setting default IP")
+                    hvHost.ipAddress = "0.0.0.0"  // Set default IP for offline nodes
+                } else {
+                    def sortedNetworks = nodeNetworkInfo.data.sort { a, b ->
+                        def aIface = a?.iface
+                        def bIface = b?.iface
 
-                // Push null/empty iface to the bottom
-                if (!aIface && bIface) return 1
-                if (!bIface && aIface) return -1
-                if (!aIface && !bIface) return 0
+                        // Push null/empty iface to the bottom
+                        if (!aIface && bIface) return 1
+                        if (!bIface && aIface) return -1
+                        if (!aIface && !bIface) return 0
 
-                // Prioritize vmbr0
-                if (aIface == 'vmbr0') return -1
-                if (bIface == 'vmbr0') return 1
+                        // Prioritize vmbr0
+                        if (aIface == 'vmbr0') return -1
+                        if (bIface == 'vmbr0') return 1
 
-                // Normal alphabetical sort
-                return aIface <=> bIface
+                        // Normal alphabetical sort
+                        return aIface <=> bIface
+                    }
+                    
+                    log.debug("Sorted Networks for node ${hvHost.node}: $sortedNetworks")
+                    
+                    // Find the first network interface with a valid address
+                    def validInterface = sortedNetworks.find { it != null && it.address != null && it.address.trim() != "" }
+                    
+                    if (validInterface) {
+                        hvHost.ipAddress = validInterface.address
+                        log.debug("Set IP address for node ${hvHost.node}: ${hvHost.ipAddress}")
+                    } else {
+                        log.warn("No valid network interface found for node ${hvHost.node}, using node name as fallback")
+                        hvHost.ipAddress = hvHost.node  // Use node name as fallback
+                    }
+                }
+
+                // Set networks (with null checking and safe fallback)
+                if (allInterfaces) {
+                    hvHost.networks = allInterfaces
+                            ?.findAll { it?.host == hvHost.node || it?.host == 'all' }
+                            ?.collect { it?.iface }
+                            ?.findAll { it != null } ?: []
+                } else {
+                    // Fallback: extract from direct node network call
+                    hvHost.networks = nodeNetworkInfo?.data?.findAll { it?.iface }?.collect { it.iface } ?: []
+                }
+
+                log.info("ALL DS: $allDatastores")
+                
+                // Set datastores (with null checking and safe fallback)
+                if (allDatastores) {
+                    hvHost.datastores = allDatastores
+                            ?.findAll { ds -> 
+                                def dsNodes = ds?.nodes?.toString()
+                                return dsNodes && (dsNodes.split(",").contains(hvHost.node) || dsNodes == 'all')
+                            }
+                            ?.collect { it?.storage }
+                            ?.findAll { it != null } ?: []
+                } else {
+                    // Fallback: try to get datastores directly for this node
+                    try {
+                        ServiceResponse nodeStorageResponse = callListApiV2(client, "nodes/${hvHost.node}/storage", authConfig)
+                        if (nodeStorageResponse?.success && nodeStorageResponse?.data) {
+                            hvHost.datastores = nodeStorageResponse.data.collect { it?.storage }.findAll { it != null }
+                        } else {
+                            hvHost.datastores = []
+                        }
+                    } catch (Exception e) {
+                        log.warn("Failed to get storage for node ${hvHost.node}: ${e.message}")
+                        hvHost.datastores = []
+                    }
+                }
+                        
+            } catch (Exception e) {
+                log.error("Error processing node ${hvHost.node}: ${e.message}", e)
+                // Set default values for failed nodes
+                hvHost.ipAddress = "0.0.0.0"
+                hvHost.networks = []
+                hvHost.datastores = []
             }
-            log.debug("Sorted Networks, vmbr preferred: $sortedNetworks")
-            hvHost.ipAddress = sortedNetworks[0].address
-
-            hvHost.networks = allInterfaces
-                    .findAll { it.host == hvHost.node || it.host == 'all' }
-                    .collect { it.iface }
-
-            log.info("ALL DS: $allDatastores")
-            hvHost.datastores = allDatastores
-                    .findAll { it.nodes.split(",").contains(hvHost.node) || it.nodes == 'all' }
-                    .collect { it.storage }
         }
 
         return new ServiceResponse(success: true, data: nodes)
