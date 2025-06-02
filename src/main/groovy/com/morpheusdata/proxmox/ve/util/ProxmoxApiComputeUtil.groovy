@@ -594,6 +594,22 @@ class ProxmoxApiComputeUtil {
     }
 
 
+    static Map getVMConfigById(HttpApiClient client, Map authConfig, String vmId, String nodeId = "0") {
+
+        //proxmox api limitation. If we don't have the node we need to query all
+        if (nodeId == 0) {
+            Map vm = listVMs(client, authConfig).data.find { it.vmid == vmId }
+            if (!vm) {
+                throw new Exception("Error: VM with ID $vmId not found.")
+            }
+            nodeId = vm.node as Long
+        }
+        def vmConfigInfo = callListApiV2(client, "nodes/$nodeId/qemu/$vmId/config", authConfig)
+
+        return vmConfigInfo.data.data
+    }
+
+
     static ServiceResponse listProxmoxPools(HttpApiClient client, Map authConfig) {
         log.debug("listProxmoxNetworks...")
         def pools = []

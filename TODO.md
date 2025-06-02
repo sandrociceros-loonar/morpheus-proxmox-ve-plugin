@@ -6,7 +6,7 @@
 - [X] Refactor ssh code to util class
 - [X] Add resource pool sync
 - [ ] Add resource pool selection to provision (and filter datastores)
-- [ ] Add provision host
+- [ ] Add provision container host
 - [X] Fix powerstate on initial host add
 - [ ] Cleanup logging
 - [ ] Fix Validation display
@@ -20,3 +20,4 @@
 - [ ] Jar Folder
 - [ ] Snapshot Backup Provider
 - [ ] Scribe resources for Morpheus OS images
+- [ ] Proxy support

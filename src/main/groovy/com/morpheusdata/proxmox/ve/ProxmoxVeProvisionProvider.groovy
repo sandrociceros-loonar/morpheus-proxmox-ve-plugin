@@ -688,19 +688,16 @@ class ProxmoxVeProvisionProvider extends AbstractProvisionProvider implements Vm
 	private getOrUploadImage(HttpApiClient client, Map authConfig, Cloud cloud, VirtualImage virtualImage, ComputeServer hvNode, String targetDS) {
 		def imageExternalId
 		def lock
-		def imagePathPrefix = "/var/opt/morpheus/morpheus-ui/vms/morpheus-images"
-		def remoteImageDir = "/var/lib/vz/template/qemu"
 		def lockKey = "proxmox.ve.imageupload.${cloud.regionCode}.${virtualImage?.id}".toString()
 
 		try {
 			//hold up to a 1 hour lock for image upload
 			lock = context.acquireLock(lockKey, [timeout: 2l * 60l * 1000l, ttl: 2l * 60l * 1000l]).blockingGet()
 			if (virtualImage) {
-				log.info("VIRTUAL IMAGE: Already Exists")
+				log.debug("VIRTUAL IMAGE: Already Exists")
 				VirtualImageLocation virtualImageLocation
 				try {
 					log.debug("searching for virtualImageLocation: $virtualImage.id")
-					//virtualImageLocation = context.async.virtualImage.location.findVirtualImageLocation(virtualImage.id, cloud.id, cloud.regionCode, null, false).blockingGet()
 					virtualImageLocation = context.async.virtualImage.location.find(new DataQuery().withFilters([
 							new DataFilter("refType", "ComputeZone"),
 							new DataFilter("refId", cloud.id),
@@ -709,10 +706,10 @@ class ProxmoxVeProvisionProvider extends AbstractProvisionProvider implements Vm
 					log.debug("Got VirtualImageLocation ($cloud.id, $virtualImage.externalId): $virtualImageLocation")
 
 					if (!virtualImageLocation) {
-						log.info("VIRTUAL IMAGE: VirtualImageLocation doesn't exist")
+						log.debug("VIRTUAL IMAGE: VirtualImageLocation doesn't exist")
 						imageExternalId = null
 					} else {
-						log.info("VIRTUAL IMAGE: VirtualImageLocation already exists")
+						log.debug("VIRTUAL IMAGE: VirtualImageLocation already exists")
 						imageExternalId = virtualImageLocation.externalId
 					}
 				} catch (e) {
@@ -977,16 +974,36 @@ class ProxmoxVeProvisionProvider extends AbstractProvisionProvider implements Vm
 		// This method should handle hosts and VMs in future, so these are temp
 		boolean isWorkload = true
 		def server = workload.getServer()
-		//
 
 		ServiceResponse rtn = ServiceResponse.success()
-
 		ComputeServer computeServer = context.async.computeServer.get(server.id).blockingGet()
 		def authConfigMap = plugin.getAuthConfig(computeServer.cloud)
-		try {
-			HttpApiClient resizeClient = new HttpApiClient()
-			HttpApiClient rebootClient = new HttpApiClient()
 
+
+		HttpApiClient resizeClient = new HttpApiClient()
+		HttpApiClient rebootClient = new HttpApiClient()
+
+		log.info("resizeWorkloadDisks: $resizeRequest.volumesDelete")
+		log.info("resizeWorkloadDisks: $resizeRequest.controllersDelete")
+		log.info("resizeWorkloadDisks: $resizeRequest.volumesUpdate")
+		log.info("resizeWorkloadDisks: $resizeRequest.controllersUpdate")
+		log.info("resizeWorkloadDisks: $resizeRequest.volumesAdd")
+		log.info("resizeWorkloadDisks: $resizeRequest.controllersAdd")
+		log.info("resizeWorkloadDisks: $resizeRequest.properties")
+
+		//resizeWorkloadComputePlan(computeServer, workload, resizeRequest, opts, resizeClient)
+		//resizeWorkloadDisks(computeServer, workload, resizeRequest, opts, resizeClient)
+		//resizeWorkloadNetworks(computeServer, workload, resizeRequest, opts, resizeClient)
+
+		//ProxmoxApiComputeUtil.rebootVM(rebootClient, authConfigMap, computeServer.name, computeServer.externalId)
+
+		return ServiceResponse.error("Still testing...")
+	}
+
+
+	ServiceResponse resizeWorkloadComputePlan(ComputeServer computeServer, Workload workload, ResizeRequest resizeRequest, Map opts, HttpApiClient resizeClient) {
+		boolean isWorkload = true
+		try {
 			//Compute
 			computeServer.status = 'resizing'
 			computeServer = saveAndGet(computeServer)
@@ -1008,11 +1025,10 @@ class ProxmoxVeProvisionProvider extends AbstractProvisionProvider implements Vm
 			def neededCores = (requestedCores ?: 1) - (currentCores ?: 1)
 			def allocationSpecs = [externalId: computeServer.externalId, maxMemory: requestedMemory, maxCpu: requestedCores]
 			if (neededMemory > 100000000l || neededMemory < -100000000l || neededCores != 0) {
-				log.info("Resizing VM with specs: ${allocationSpecs}")
-				log.info("Resizing vm: ${workload.getInstance().name} with $server.coresPerSocket cores and $server.maxMemory memory")
-				//resizeVMCompute(HttpApiClient client, Map authConfig, String node, String vmId, Long cpu, Long ram)
+				log.debug("Resizing VM with specs: ${allocationSpecs}")
+				log.debug("Resizing vm: ${workload.getInstance().name} with $server.coresPerSocket cores and $server.maxMemory memory")
+
 				ProxmoxApiComputeUtil.resizeVM(resizeClient, authConfigMap, computeServer.parentServer.name, computeServer.externalId, requestedCores, requestedMemory)
-				ProxmoxApiComputeUtil.rebootVM(rebootClient, authConfigMap, computeServer.name, computeServer.externalId)
 			}
 		} catch (e) {
 			log.error("Unable to resize workload: ${e.message}", e)
@@ -1024,10 +1040,141 @@ class ProxmoxVeProvisionProvider extends AbstractProvisionProvider implements Vm
 			def error = morpheus.services.localization.get("gomorpheus.provision.xenServer.error.resizeWorkload")
 			rtn.setError(error)
 		}
-		return rtn
+
+		return new ServiceResponse()
 	}
 
+	ServiceResponse resizeWorkloadDisks(ComputeServer computeServer, Workload workload, ResizeRequest resizeRequest, Map opts, HttpApiClient resizeClient) {
 
+		//remove disks to delete
+		def volumesToDelete = resizeRequest.volumesDelete?.collect {it.externalId}
+		if (volumesToDelete.size() > 0) {
+
+			//Map vmConfig = ProxmoxApiComputeUtil.getVMConfigById(resizeClient, plugin.getAuthConfig(cloud.id), computeServer.externalId)
+
+			log.info("Disks to remove: $volumesToDelete")
+		}
+//			serverDetails = NutanixPrismComputeUtility.waitForPowerState(client, authConfig, vmId)
+//			vmBody = serverDetails?.data
+//			def newDiskList = vmBody.spec?.resources?.disk_list?.findAll { !volumesToDelete.contains(it.uuid) }
+//			vmBody.spec?.resources?.disk_list = newDiskList
+//			def deleteResults = NutanixPrismComputeUtility.retryableUpdateVm(client, authConfig, vmId, vmBody)
+//			if(deleteResults.success == true) {
+//				if(deleteResults.data?.status?.execution_context?.task_uuid) {
+//					def taskResult = NutanixPrismComputeUtility.checkTaskReady(client, authConfig, deleteResults.data?.status?.execution_context?.task_uuid)
+//				}
+//				log.info("resize volume delete complete: ${deleteResults.success}")
+//				resizeRequest.volumesDelete?.each { StorageVolume volume ->
+//					morpheusContext.async.storageVolume.remove([volume], server, true).blockingGet()
+//				}
+//			}
+//		}
+//
+//		//update existing disks
+//		resizeRequest.volumesUpdate?.each { UpdateModel<StorageVolume> volumeUpdate ->
+//			StorageVolume existing = volumeUpdate.existingModel
+//			Map updateProps = volumeUpdate.updateProps
+//			log.info("resizing vm storage: {}", volumeUpdate)
+//			if (updateProps.maxStorage > existing.maxStorage) {
+//				serverDetails = NutanixPrismComputeUtility.waitForPowerState(client, authConfig, vmId)
+//				vmBody = serverDetails?.data
+//				def newDiskList = vmBody.spec?.resources?.disk_list
+//				def diskMap = newDiskList.find{it.uuid == existing.externalId}
+//				diskMap.disk_size_bytes = updateProps.maxStorage
+//				diskMap.remove("disk_size_mib")
+//				def result = NutanixPrismComputeUtility.retryableUpdateVm(client, authConfig, vmId, vmBody)
+//				if (result.success) {
+//					if(result.data?.status?.execution_context?.task_uuid) {
+//						def taskResult = NutanixPrismComputeUtility.checkTaskReady(client, authConfig, result.data?.status?.execution_context?.task_uuid)
+//					}
+//					existing.maxStorage = updateProps.maxStorage
+//					morpheusContext.async.storageVolume.save([existing]).blockingGet()
+//				} else {
+//					rtn.setError(result.msg ?: "Failed to expand Disk: ${existing.name}")
+//					log.warn("error resizing disk: ${result.msg}")
+//				}
+//			}
+//		}
+//
+//		//add new disks
+//		def datastoreIds = []
+//		def storageVolumeTypes = [:]
+//		resizeRequest.volumesAdd?.each { Map volumeAdd ->
+//			datastoreIds << volumeAdd.datastoreId.toLong()
+//			def storageVolumeTypeId = volumeAdd.storageType.toLong()
+//			if(!storageVolumeTypes[storageVolumeTypeId]) {
+//				storageVolumeTypes[storageVolumeTypeId] = morpheusContext.async.storageVolume.storageVolumeType.get(storageVolumeTypeId).blockingGet()
+//			}
+//
+//		}
+//		datastoreIds = datastoreIds.unique()
+//		def datastores = morpheusContext.async.cloud.datastore.listById(datastoreIds).toMap {it.id.toLong()}.blockingGet()
+//		resizeRequest.volumesAdd?.each { Map volumeAdd ->
+//			serverDetails = NutanixPrismComputeUtility.waitForPowerState(client, authConfig, vmId)
+//			vmBody = serverDetails?.data
+//			log.info("resizing vm adding storage: {}", volumeAdd)
+//			if (!volumeAdd.maxStorage) {
+//				volumeAdd.maxStorage = volumeAdd.size ? (volumeAdd.size.toDouble() * ComputeUtility.ONE_GIGABYTE).toLong() : 0
+//			}
+//			def storageVolumeType = storageVolumeTypes[volumeAdd.storageType.toLong()]
+//			def datastore = datastores[volumeAdd.datastoreId.toLong()]
+//			def targetIndex = vmBody.spec?.resources?.disk_list?.size()
+//			if(targetIndex != null) {
+//				//account for ide.0
+//				targetIndex--
+//			} else {
+//				targetIndex = 0
+//			}
+//			def newDiskList = vmBody.spec?.resources?.disk_list
+//
+//			def diskConfig = [
+//					device_properties: [
+//							device_type: "DISK",
+//							disk_address: [
+//									adapter_type: storageVolumeType.name.toUpperCase(),
+//									device_index: targetIndex
+//							],
+//					],
+//					disk_size_bytes: volumeAdd.maxStorage,
+//					storage_config: [
+//							storage_container_reference: [
+//									uuid: datastore.externalId,
+//									name: datastore.name,
+//									kind: "storage_container",
+//							]
+//					]
+//			]
+//			newDiskList << diskConfig
+//			vmBody.spec.resources.disk_list = newDiskList
+//			def addDiskResults = NutanixPrismComputeUtility.retryableUpdateVm(client, authConfig, vmId, vmBody)
+//			if(addDiskResults.success) {
+//				//wait for operation to complete
+//				if(addDiskResults.data?.status?.execution_context?.task_uuid) {
+//					def taskResult = NutanixPrismComputeUtility.checkTaskReady(client, authConfig, addDiskResults.data?.status?.execution_context?.task_uuid)
+//				}
+//				serverDetails = NutanixPrismComputeUtility.waitForPowerState(client, authConfig, vmId)
+//				vmBody = serverDetails?.data
+//				def newDisk = vmBody.spec.resources.disk_list.find {it.device_properties.disk_address.adapter_type == storageVolumeType.name.toUpperCase() && it.device_properties.disk_address.device_index == targetIndex}
+//				def newVolume = NutanixPrismSyncUtils.buildStorageVolume(server.account, server, volumeAdd, targetIndex)
+//				newVolume.externalId = newDisk.uuid
+//				newVolume.type = new StorageVolumeType(id: volumeAdd.storageType.toLong())
+//				morpheusContext.async.storageVolume.create([newVolume], server).blockingGet()
+//				// Need to refetch the server
+//				server = morpheusContext.async.computeServer.get(server.id).blockingGet()
+//			} else {
+//				//do stuff here to bubble up results
+//				rtn.setError("error adding disk: ${addDiskResults?.msg}")
+//				log.warn("error adding disk: ${addDiskResults}")
+//			}
+//		}
+
+		return new ServiceResponse()
+	}
+
+	ServiceResponse resizeWorkloadNetwork(ComputeServer computeServer, Workload workload, ResizeRequest resizeRequest, Map opts, HttpApiClient resizeClient) {
+
+		return new ServiceResponse()
+	}
 	//BlockDeviceNameFacet
 	/*
 	@Override
@@ -1088,6 +1235,7 @@ class ProxmoxVeProvisionProvider extends AbstractProvisionProvider implements Vm
 
 	@Override
 	ServiceResponse resizeServer(ComputeServer server, ResizeRequest resizeRequest, Map opts) {
+		log.info("RESIZE SERVER")
 		return null
 	}
 }
