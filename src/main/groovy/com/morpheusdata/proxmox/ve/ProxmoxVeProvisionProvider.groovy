@@ -29,6 +29,7 @@ import com.morpheusdata.model.VirtualImageLocation
 import com.morpheusdata.model.Workload
 import com.morpheusdata.model.projection.ComputeServerIdentityProjection
 import com.morpheusdata.model.projection.DatastoreIdentity
+import com.morpheusdata.model.projection.DatastoreIdentityProjection
 import com.morpheusdata.model.provisioning.HostRequest
 import com.morpheusdata.model.provisioning.WorkloadRequest
 import com.morpheusdata.model.Cloud
@@ -418,26 +419,27 @@ class ProxmoxVeProvisionProvider extends AbstractProvisionProvider implements Vm
 		log.debug("Cloud-Init User-Data User: $workloadRequest.cloudConfigUser")
 		log.debug("Cloud-Init User-Data Network: $workloadRequest.cloudConfigNetwork")
 
-		try {
+		//try {
 			ComputeServer server = workload.server
 			Cloud cloud = server.cloud
 			VirtualImage virtualImage = server.sourceImage
 			Map authConfig = plugin.getAuthConfig(cloud)
 			HttpApiClient client = new HttpApiClient()
 			String nodeId = workload.server.getConfigProperty('proxmoxNode') ?: null
-			List<Map<String, Object>> targetDSs = server.getVolumes().collect {[
-					datastore: it.datastore ?: getDefaultDatastore(cloud.id),
-					size: it.maxStorage as Long / 1024 / 1024 / 1024,
-					isRoot: it.rootVolume
-			]}
+
+			server.volumes.each {
+				if (!it.datastore) {
+					Datastore ds = getDefaultDatastore(cloud.id)
+					it.setDatastore((DatastoreIdentityProjection) ds)
+					context.services.storageVolume.save(it)
+				}
+			}
+			server = saveAndGet(server)
+
 			List<String> targetNetworks = server.getInterfaces().collect { it.network.externalId }
 
 			server.getInterfaces().each { ComputeServerInterface iface ->
 				log.debug("IFACE NETWORK: $iface.network.externalId")
-			}
-
-			targetDSs.each { Map<Datastore, Long> ds ->
-				log.debug("VOLUME DS: $ds.datastore.externalId, $ds.size")
 			}
 
 			ComputeServer hvNode = getHypervisorHostByExternalId(cloud.id, nodeId)
@@ -497,7 +499,7 @@ class ProxmoxVeProvisionProvider extends AbstractProvisionProvider implements Vm
 			log.info("Provisioning/cloning: ${workload.getInstance().name} with $server.coresPerSocket cores and $server.maxMemory memory")
 
 
-			ServiceResponse rtnClone = ProxmoxApiComputeUtil.cloneTemplate(client, authConfig, imageExternalId, workload.getInstance().name, nodeId, server.maxCores, server.maxMemory, targetDSs, targetNetworks)
+			ServiceResponse rtnClone = ProxmoxApiComputeUtil.cloneTemplate(client, authConfig, imageExternalId, workload.getInstance().name, nodeId, server.maxCores, server.maxMemory, server.volumes, targetNetworks)
 			log.debug("VM Clone done. Results: $rtnClone")
 
 			server.internalId = rtnClone.data.vmId
@@ -513,7 +515,8 @@ class ProxmoxVeProvisionProvider extends AbstractProvisionProvider implements Vm
 			//log.debug("OPTS: $opts")
 			if(virtualImage?.isCloudInit() && workloadRequest?.cloudConfigUser) {
 				log.debug(log.debug("Configuring Cloud-Init"))
-				ProxmoxSshUtil.createCloudInitDrive(context, hvNode, workloadRequest, rtnClone.data.vmId, targetDSs[0].datastore.externalId)
+				def rootVol = server.volumes.find {it.rootVolume }
+				ProxmoxSshUtil.createCloudInitDrive(context, hvNode, workloadRequest, rtnClone.data.vmId, rootVol.datastore.externalId)
 			} else {
 				log.info("Non Cloud-Init deployment...")
 			}
@@ -532,15 +535,15 @@ class ProxmoxVeProvisionProvider extends AbstractProvisionProvider implements Vm
 							noAgent: skipAgent
 					)
 			)
-		} catch(e) {
-			log.error("Error during provisioning: ${e}")
-			return new ServiceResponse<ProvisionResponse>(
-					false,
-					"Provisioning failed: ${e}",
-					null,
-					new ProvisionResponse(success: false)
-			)
-		}
+		//} catch(e) {
+		//	log.error("Error during provisioning: ${e}")
+		//	return new ServiceResponse<ProvisionResponse>(
+		//			false,
+		//			"Provisioning failed: ${e}",
+		//			null,
+		//			new ProvisionResponse(success: false)
+		//	)
+		//}
 	}
 
 
@@ -649,7 +652,7 @@ class ProxmoxVeProvisionProvider extends AbstractProvisionProvider implements Vm
 	}
 
 
-	private DatastoreIdentity getDefaultDatastore(Long cloudId, boolean imageStore = false) {
+	private Datastore getDefaultDatastore(Long cloudId, boolean imageStore = false) {
 		log.debug("getDefaultDatastoreName()...")
 		//returns the largest non-local datastore
 		Datastore rtn = null
@@ -658,12 +661,14 @@ class ProxmoxVeProvisionProvider extends AbstractProvisionProvider implements Vm
 				new DataFilter("refType", "ComputeZone"),
 				new DataFilter("refId", cloudId)
 		])).blockingForEach { ds ->
-			if (rtn == null) {
-				rtn = ds
-			} else if (ds.defaultStore) {
-				return ds
-			} else if (ds.getFreeSpace() > rtn.getFreeSpace()) {
-				rtn = ds
+			if (ds) {
+				if (rtn == null) {
+					rtn = ds
+				} else if (ds.defaultStore) {
+					return ds
+				} else if (ds.getFreeSpace() > rtn.getFreeSpace()) {
+					rtn = ds
+				}
 			}
 		}
 		return rtn
@@ -998,13 +1003,25 @@ class ProxmoxVeProvisionProvider extends AbstractProvisionProvider implements Vm
 		log.info("resizeWorkloadDisks: $resizeRequest.controllersAdd")
 		log.info("resizeWorkloadDisks: $resizeRequest.properties")
 
+		log.info("resizeWorkloadDisks: $resizeRequest.plan")
+		log.info("resizeWorkloadDisks: $resizeRequest.maxStorage")
+		resizeRequest.volumesUpdate.each {
+			log.info("$it.updateProps")
+		}
+
+
+
+
+
+
 		//resizeWorkloadComputePlan(computeServer, workload, resizeRequest, opts, resizeClient)
 		//resizeWorkloadDisks(computeServer, workload, resizeRequest, opts, resizeClient)
 		//resizeWorkloadNetworks(computeServer, workload, resizeRequest, opts, resizeClient)
 
 		//ProxmoxApiComputeUtil.rebootVM(rebootClient, authConfigMap, computeServer.name, computeServer.externalId)
 
-		return ServiceResponse.error("Still testing...")
+		//return ServiceResponse.error("Still testing...")
+		return ServiceResponse.success("Still testing...")
 	}
 
 

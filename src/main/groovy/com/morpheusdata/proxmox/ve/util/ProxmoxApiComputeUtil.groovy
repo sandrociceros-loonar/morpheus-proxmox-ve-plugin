@@ -1,6 +1,7 @@
 package com.morpheusdata.proxmox.ve.util
 
 import com.morpheusdata.core.util.HttpApiClient
+import com.morpheusdata.model.StorageVolume
 import com.morpheusdata.response.ServiceResponse
 import groovy.util.logging.Slf4j
 import org.apache.http.entity.ContentType
@@ -17,7 +18,7 @@ class ProxmoxApiComputeUtil {
     static final Long API_CHECK_WAIT_INTERVAL = 2000
 
 
-    static resizeVM(HttpApiClient client, Map authConfig, String node, String vmId, Long cpu, Long ram, List<Map<String, Object>> targetDSs, List<String> targetNetworks) {
+    static resizeVM(HttpApiClient client, Map authConfig, String node, String vmId, Long cpu, Long ram, List<StorageVolume> volumes, List<String> targetNetworks) {
         log.debug("resizeVMCompute")
         Long ramValue = ram / 1024 / 1024
 
@@ -30,25 +31,24 @@ class ProxmoxApiComputeUtil {
             return highest.label.replace("scsi", "").toInteger()
         }
 
-        def rootVolume = targetDSs.find {it.isRoot == true }
+        def rootVolume = volumes.find {it.rootVolume }
 
         try {
             log.debug("Resize Boot Disk...")
             def initialTemlpateDisks = getExistingVMStorage(client, authConfig, node, vmId)
-            log.info("TEMPLATE DISKS: $initialTemlpateDisks")
             def tokenCfg = getApiV2Token(authConfig).data
             def resizeOpts = [
-                    headers  : [
-                            'Content-Type'       : 'application/json',
-                            'Cookie'             : "PVEAuthCookie=$tokenCfg.token",
-                            'CSRFPreventionToken': tokenCfg.csrfToken
-                    ],
-                    body     : [
-                            disk  : "${initialTemlpateDisks[0].label}",
-                            size  : "${rootVolume.size}G",
-                    ],
-                    contentType: ContentType.APPLICATION_JSON,
-                    ignoreSSL: true
+                headers  : [
+                        'Content-Type'       : 'application/json',
+                        'Cookie'             : "PVEAuthCookie=$tokenCfg.token",
+                        'CSRFPreventionToken': tokenCfg.csrfToken
+                ],
+                body     : [
+                        disk  : "${initialTemlpateDisks[0].label}",
+                        size  : "${rootVolume.maxStorage as Long / 1024 / 1024 / 1024}G",
+                ],
+                contentType: ContentType.APPLICATION_JSON,
+                ignoreSSL: true
             ]
 
 
@@ -66,49 +66,43 @@ class ProxmoxApiComputeUtil {
 
             log.debug("Resize compute, add additional Disks...")
             def opts = [
-                    headers  : [
-                            'Content-Type'       : 'application/json',
-                            'Cookie'             : "PVEAuthCookie=$tokenCfg.token",
-                            'CSRFPreventionToken': tokenCfg.csrfToken
-                    ],
-                    body     : [
-                            node  : node,
-                            vcpus : cpu,
-                            cores : cpu,
-                            memory: ramValue
-                    ],
-                    contentType: ContentType.APPLICATION_JSON,
-                    ignoreSSL: true
+                headers  : [
+                        'Content-Type'       : 'application/json',
+                        'Cookie'             : "PVEAuthCookie=$tokenCfg.token",
+                        'CSRFPreventionToken': tokenCfg.csrfToken
+                ],
+                body     : [
+                        node  : node,
+                        vcpus : cpu,
+                        cores : cpu,
+                        memory: ramValue
+                ],
+                contentType: ContentType.APPLICATION_JSON,
+                ignoreSSL: true
             ]
 
-            log.info("TARGET DSs: $targetDSs")
             def nextScsi = getHighestScsiDisk(initialTemlpateDisks) + 1
-            targetDSs.each { ds ->
-                if (!ds.isRoot) {
-                    opts.body["scsi$nextScsi"] = "${ds.datastore.externalId}:${ds.size},size=${ds.size}G"
+            volumes.each { vol ->
+                if (!vol.rootVolume) {
+                    def size = "${vol.maxStorage as Long / 1024 / 1024 / 1024}"
+                    opts.body["scsi$nextScsi"] = "${vol.datastore.externalId}:$size,size=${size}G"
                     nextScsi++
                 }
             }
 
-
-            log.info("TARGET NETWORKS: $targetNetworks")
             def counter = 0
             targetNetworks.each {network ->
                 opts.body["net$counter"] = "bridge=$network,model=e1000e"
                 counter++
             }
 
-
             log.debug("Setting VM Compute Size $vmId on node $node...")
-            log.info("POST path is: $authConfig.apiUrl${authConfig.v2basePath}/nodes/$node/qemu/$vmId/config")
-            log.info("POST BODY IS: $opts.body")
-
             def results = client.callJsonApi(
-                    (String) authConfig.apiUrl,
-                    "${authConfig.v2basePath}/nodes/$node/qemu/$vmId/config",
-                    null, null,
-                    new HttpApiClient.RequestOptions(opts),
-                    'POST'
+                (String) authConfig.apiUrl,
+                "${authConfig.v2basePath}/nodes/$node/qemu/$vmId/config",
+                null, null,
+                new HttpApiClient.RequestOptions(opts),
+                'POST'
             )
 
             return results
@@ -120,12 +114,13 @@ class ProxmoxApiComputeUtil {
 
 
 
-    static cloneTemplate(HttpApiClient client, Map authConfig, String templateId, String name, String nodeId, Long vcpus, Long ram, List<Map<String, Object>> targetDSs, List<String> targetNetworks) {
+    static cloneTemplate(HttpApiClient client, Map authConfig, String templateId, String name, String nodeId, Long vcpus, Long ram, List<StorageVolume> volumes, List<String> targetNetworks) {
         log.debug("cloneTemplate: $templateId")
 
         def rtn = new ServiceResponse(success: true)
         def nextId = callListApiV2(client, "cluster/nextid", authConfig).data
         log.debug("Next VM Id is: $nextId")
+        StorageVolume rootVolume = volumes.find { it.rootVolume }
 
         try {
             def tokenCfg = getApiV2Token(authConfig).data
@@ -142,18 +137,13 @@ class ProxmoxApiComputeUtil {
                             vmid: templateId,
                             name: name,
                             full: true,
-                            storage: "${targetDSs[0].datastore.externalId}"
+                            storage: "${rootVolume.datastore.externalId}"
                     ],
                     contentType: ContentType.APPLICATION_JSON,
                     ignoreSSL: true
             ]
 
-            def counter = 0
-
-
             log.debug("Cloning template $templateId to VM $name($nextId) on node $nodeId")
-            log.debug("Path is: $authConfig.apiUrl${authConfig.v2basePath}/nodes/$nodeId/qemu/$templateId/clone")
-            log.debug("Body data is: $opts.body")
             def results = client.callJsonApi(
                     (String) authConfig.apiUrl,
                     "${authConfig.v2basePath}/nodes/$nodeId/qemu/$templateId/clone",
@@ -175,7 +165,7 @@ class ProxmoxApiComputeUtil {
                 }
 
                 log.debug("Resizing newly cloned VM. Spec: CPU $vcpus, RAM $ram")
-                ServiceResponse rtnResize = resizeVM(new HttpApiClient(), authConfig, nodeId, nextId, vcpus, ram, targetDSs, targetNetworks)
+                ServiceResponse rtnResize = resizeVM(new HttpApiClient(), authConfig, nodeId, nextId, vcpus, ram, volumes, targetNetworks)
 
                 if (!rtnResize?.success) {
                     return ServiceResponse.error("Error Sizing VM Compute. Resize compute error: ${rtnResize}")
