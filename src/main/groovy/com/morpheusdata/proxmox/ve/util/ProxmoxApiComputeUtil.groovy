@@ -1,6 +1,7 @@
 package com.morpheusdata.proxmox.ve.util
 
 import com.morpheusdata.core.util.HttpApiClient
+import com.morpheusdata.model.StorageVolume
 import com.morpheusdata.response.ServiceResponse
 import groovy.util.logging.Slf4j
 import org.apache.http.entity.ContentType
@@ -17,43 +18,158 @@ class ProxmoxApiComputeUtil {
     static final Long API_CHECK_WAIT_INTERVAL = 2000
 
 
-    static resizeVM(HttpApiClient client, Map authConfig, String node, String vmId, Long cpu, Long ram, List<Map<String, Object>> targetDSs, List<String> targetNetworks) {
+    static resizeVMDisk(HttpApiClient client, Map authConfig, StorageVolume updatedVolume, String node, String vmId) {
+        def tokenCfg = getApiV2Token(authConfig).data
+        def diskResizeOpts = [
+                headers  : [
+                        'Content-Type'       : 'application/json',
+                        'Cookie'             : "PVEAuthCookie=$tokenCfg.token",
+                        'CSRFPreventionToken': tokenCfg.csrfToken
+                ],
+                body     : [
+                        disk: "$updatedVolume.deviceName",
+                        size: "${updatedVolume.maxStorage as Long / 1024 / 1024 / 1024}G"
+                ],
+                contentType: ContentType.APPLICATION_JSON,
+                ignoreSSL: true
+        ]
+
+        def results = client.callJsonApi(
+                (String) authConfig.apiUrl,
+                "${authConfig.v2basePath}/nodes/$node/qemu/$vmId/resize",
+                null, null,
+                new HttpApiClient.RequestOptions(diskResizeOpts),
+                'PUT'
+        )
+
+        return results
+    }
+
+
+    static addVMDisks(HttpApiClient client, Map authConfig, List<StorageVolume> newVolumes, String node, String vmId) {
+        try {
+            def tokenCfg = getApiV2Token(authConfig).data
+            def diskAddOpts = [
+                headers  : [
+                    'Content-Type'       : 'application/json',
+                    'Cookie'             : "PVEAuthCookie=$tokenCfg.token",
+                    'CSRFPreventionToken': tokenCfg.csrfToken
+                ],
+                body     : [
+                    delete: ""
+                ],
+                contentType: ContentType.APPLICATION_JSON,
+                ignoreSSL: true
+            ]
+
+            newVolumes.each { vol ->
+                log.info("Volume Device: $vol.deviceName")
+                log.info("Volume Device Display: $vol.deviceDisplayName")
+                log.info("Volume Size: $vol.maxStorage")
+                log.info("Volume ExtId: $vol.externalId")
+                log.info("Volume Name: $vol.name")
+                log.info("Volume ID: $vol.id")
+                log.info("Volume Datastore: $vol.datastore")
+                //log.info("Volume Datastore ExtId: $vol.datastore.externalId")
+                def size = "${vol.maxStorage as Long / 1024 / 1024 / 1024}"
+                diskAddOpts.body["$vol.deviceName"] = "${vol.datastore.externalId}:$size,size=${size}G"
+            }
+
+            def results = client.callJsonApi(
+                    (String) authConfig.apiUrl,
+                    "${authConfig.v2basePath}/nodes/$node/qemu/$vmId/config",
+                    null, null,
+                    new HttpApiClient.RequestOptions(diskAddOpts),
+                    'POST'
+            )
+
+            return results
+        } catch (e) {
+            log.error "Error Provisioning VM: ${e}", e
+            return ServiceResponse.error("Error Provisioning VM: ${e}")
+        }
+    }
+
+
+    static deleteVolumes(HttpApiClient client, Map authConfig, String node, String vmId, List<String> ids) {
+        log.debug("deleteVolumes")
+        def tokenCfg = getApiV2Token(authConfig).data
+        def diskRemoveOpts = [
+                headers  : [
+                        'Content-Type'       : 'application/json',
+                        'Cookie'             : "PVEAuthCookie=$tokenCfg.token",
+                        'CSRFPreventionToken': tokenCfg.csrfToken
+                ],
+                body     : [
+                        delete: ""
+                ],
+                contentType: ContentType.APPLICATION_JSON,
+                ignoreSSL: true
+        ]
+
+        try {
+            def success = true
+            def errorMsg = ""
+            ids.each { String diskId ->
+                diskRemoveOpts.body.delete = diskId
+                log.info("Delete request path: \n${authConfig.v2basePath}/nodes/$node/qemu/$vmId/config")
+                log.info("Delete request body: \n$diskRemoveOpts")
+                def diskRemoveResults = client.callJsonApi(
+                        (String) authConfig.apiUrl,
+                        "${authConfig.v2basePath}/nodes/$node/qemu/$vmId/config",
+                        null, null,
+                        new HttpApiClient.RequestOptions(diskRemoveOpts),
+                        'PUT'
+                )
+                if (!diskRemoveResults.success) {
+                    errorMsg += "$diskRemoveResults.error\n"
+                    success = false
+                }
+            }
+            return new ServiceResponse(success: success, msg: errorMsg)
+        } catch (e) {
+            log.error "Error removing VM disk: ${e}", e
+            return ServiceResponse.error("Error removing VM disk: ${e}")
+        }
+    }
+
+
+    static int getHighestScsiDisk(diskList) {
+        def scsiDisks = diskList.findAll { it.label ==~ /scsi\d+/ }
+        if (!scsiDisks) return -1
+
+        def highest = scsiDisks.max { it.label.replace("scsi", "").toInteger() }
+        return highest.label.replace("scsi", "").toInteger()
+    }
+
+
+
+    static resizeVM(HttpApiClient client, Map authConfig, String node, String vmId, Long cpu, Long ram, List<StorageVolume> volumes, List<String> targetNetworks) {
         log.debug("resizeVMCompute")
         Long ramValue = ram / 1024 / 1024
 
-
-        def getHighestScsiDisk = { diskList ->
-            def scsiDisks = diskList.findAll { it.label ==~ /scsi\d+/ }
-            if (!scsiDisks) return null
-
-            def highest = scsiDisks.max { it.label.replace("scsi", "").toInteger() }
-            return highest.label.replace("scsi", "").toInteger()
-        }
-
-        def rootVolume = targetDSs.find {it.isRoot == true }
+        def rootVolume = volumes.find {it.rootVolume }
 
         try {
             log.debug("Resize Boot Disk...")
             def initialTemlpateDisks = getExistingVMStorage(client, authConfig, node, vmId)
-            log.info("TEMPLATE DISKS: $initialTemlpateDisks")
             def tokenCfg = getApiV2Token(authConfig).data
             def resizeOpts = [
-                    headers  : [
-                            'Content-Type'       : 'application/json',
-                            'Cookie'             : "PVEAuthCookie=$tokenCfg.token",
-                            'CSRFPreventionToken': tokenCfg.csrfToken
-                    ],
-                    body     : [
-                            disk  : "${initialTemlpateDisks[0].label}",
-                            size  : "${rootVolume.size}G",
-                    ],
-                    contentType: ContentType.APPLICATION_JSON,
-                    ignoreSSL: true
+                headers  : [
+                        'Content-Type'       : 'application/json',
+                        'Cookie'             : "PVEAuthCookie=$tokenCfg.token",
+                        'CSRFPreventionToken': tokenCfg.csrfToken
+                ],
+                body     : [
+                        disk  : "${initialTemlpateDisks[0].label}",
+                        size  : "${rootVolume.maxStorage as Long / 1024 / 1024 / 1024}G",
+                ],
+                contentType: ContentType.APPLICATION_JSON,
+                ignoreSSL: true
             ]
 
-
-            log.info("PUT path is: $authConfig.apiUrl${authConfig.v2basePath}/nodes/$node/qemu/$vmId/resize")
-            log.info("PUT BODY IS: $resizeOpts.body")
+            //log.info("PUT path is: $authConfig.apiUrl${authConfig.v2basePath}/nodes/$node/qemu/$vmId/resize")
+            //log.info("PUT BODY IS: $resizeOpts.body")
             def resizeResults = client.callJsonApi(
                     (String) authConfig.apiUrl,
                     "${authConfig.v2basePath}/nodes/$node/qemu/$vmId/resize",
@@ -66,49 +182,41 @@ class ProxmoxApiComputeUtil {
 
             log.debug("Resize compute, add additional Disks...")
             def opts = [
-                    headers  : [
-                            'Content-Type'       : 'application/json',
-                            'Cookie'             : "PVEAuthCookie=$tokenCfg.token",
-                            'CSRFPreventionToken': tokenCfg.csrfToken
-                    ],
-                    body     : [
-                            node  : node,
-                            vcpus : cpu,
-                            cores : cpu,
-                            memory: ramValue
-                    ],
-                    contentType: ContentType.APPLICATION_JSON,
-                    ignoreSSL: true
+                headers  : [
+                        'Content-Type'       : 'application/json',
+                        'Cookie'             : "PVEAuthCookie=$tokenCfg.token",
+                        'CSRFPreventionToken': tokenCfg.csrfToken
+                ],
+                body     : [
+                        node  : node,
+                        vcpus : cpu,
+                        cores : cpu,
+                        memory: ramValue
+                ],
+                contentType: ContentType.APPLICATION_JSON,
+                ignoreSSL: true
             ]
 
-            log.info("TARGET DSs: $targetDSs")
-            def nextScsi = getHighestScsiDisk(initialTemlpateDisks) + 1
-            targetDSs.each { ds ->
-                if (!ds.isRoot) {
-                    opts.body["scsi$nextScsi"] = "${ds.datastore.externalId}:${ds.size},size=${ds.size}G"
-                    nextScsi++
+            volumes.each { vol ->
+                if (!vol.rootVolume) {
+                    def size = "${vol.maxStorage as Long / 1024 / 1024 / 1024}"
+                    opts.body["$vol.deviceName"] = "${vol.datastore.externalId}:$size,size=${size}G"
                 }
             }
 
-
-            log.info("TARGET NETWORKS: $targetNetworks")
             def counter = 0
             targetNetworks.each {network ->
                 opts.body["net$counter"] = "bridge=$network,model=e1000e"
                 counter++
             }
 
-
             log.debug("Setting VM Compute Size $vmId on node $node...")
-            log.info("POST path is: $authConfig.apiUrl${authConfig.v2basePath}/nodes/$node/qemu/$vmId/config")
-            log.info("POST BODY IS: $opts.body")
-
             def results = client.callJsonApi(
-                    (String) authConfig.apiUrl,
-                    "${authConfig.v2basePath}/nodes/$node/qemu/$vmId/config",
-                    null, null,
-                    new HttpApiClient.RequestOptions(opts),
-                    'POST'
+                (String) authConfig.apiUrl,
+                "${authConfig.v2basePath}/nodes/$node/qemu/$vmId/config",
+                null, null,
+                new HttpApiClient.RequestOptions(opts),
+                'POST'
             )
 
             return results
@@ -120,12 +228,13 @@ class ProxmoxApiComputeUtil {
 
 
 
-    static cloneTemplate(HttpApiClient client, Map authConfig, String templateId, String name, String nodeId, Long vcpus, Long ram, List<Map<String, Object>> targetDSs, List<String> targetNetworks) {
+    static cloneTemplate(HttpApiClient client, Map authConfig, String templateId, String name, String nodeId, Long vcpus, Long ram, List<StorageVolume> volumes, List<String> targetNetworks) {
         log.debug("cloneTemplate: $templateId")
 
         def rtn = new ServiceResponse(success: true)
         def nextId = callListApiV2(client, "cluster/nextid", authConfig).data
         log.debug("Next VM Id is: $nextId")
+        StorageVolume rootVolume = volumes.find { it.rootVolume }
 
         try {
             def tokenCfg = getApiV2Token(authConfig).data
@@ -142,18 +251,13 @@ class ProxmoxApiComputeUtil {
                             vmid: templateId,
                             name: name,
                             full: true,
-                            storage: "${targetDSs[0].datastore.externalId}"
+                            storage: "${rootVolume.datastore.externalId}"
                     ],
                     contentType: ContentType.APPLICATION_JSON,
                     ignoreSSL: true
             ]
 
-            def counter = 0
-
-
             log.debug("Cloning template $templateId to VM $name($nextId) on node $nodeId")
-            log.debug("Path is: $authConfig.apiUrl${authConfig.v2basePath}/nodes/$nodeId/qemu/$templateId/clone")
-            log.debug("Body data is: $opts.body")
             def results = client.callJsonApi(
                     (String) authConfig.apiUrl,
                     "${authConfig.v2basePath}/nodes/$nodeId/qemu/$templateId/clone",
@@ -175,7 +279,7 @@ class ProxmoxApiComputeUtil {
                 }
 
                 log.debug("Resizing newly cloned VM. Spec: CPU $vcpus, RAM $ram")
-                ServiceResponse rtnResize = resizeVM(new HttpApiClient(), authConfig, nodeId, nextId, vcpus, ram, targetDSs, targetNetworks)
+                ServiceResponse rtnResize = resizeVM(new HttpApiClient(), authConfig, nodeId, nextId, vcpus, ram, volumes, targetNetworks)
 
                 if (!rtnResize?.success) {
                     return ServiceResponse.error("Error Sizing VM Compute. Resize compute error: ${rtnResize}")
@@ -235,10 +339,10 @@ class ProxmoxApiComputeUtil {
             throw new Exception("Boot disk for VM not found!")
         }
 
-        vmStorageList << [ label: "$bootDisk", config: vmConfigInfo[bootDisk] ]
+        vmStorageList << [ label: "$bootDisk", config: vmConfigInfo[bootDisk], isRoot: true ]
         vmDiskKeys.each { String diskLabel ->
             if (diskLabel != bootDisk) {
-                vmStorageList << [ label: "$diskLabel", config: vmConfigInfo[diskLabel] ]
+                vmStorageList << [ label: "$diskLabel", config: vmConfigInfo[diskLabel], isRoot: false ]
             }
         }
 

@@ -10,12 +10,13 @@
 - [X] Fix powerstate on initial host add
 - [ ] Cleanup logging
 - [ ] Fix Validation display
-- [ ] Fix datastore tab on instance 
-- [ ] Add reconfigure for disks and nics
+- [X] Fix storage tab on instance 
+- [ ] Add reconfigure for disks
+- [ ] Add reconfigure for nics
 - [ ] Investigate "Starting determineSshRoute with hostList: []" when skipping agent
 - [ ] Fix validation errors not appearing in instance wizard
 - [ ] Improve ssh error tracking
-- [ ] Add LICENSE
+- [X] Add LICENSE
 - [ ] Populate README
 - [ ] Jar Folder
 - [ ] Snapshot Backup Provider

@@ -148,6 +148,7 @@ class VMSync {
 
                 // Fix power state comparison
                 def cloudPowerState = (cloudItem.status == 'running') ? ComputeServer.PowerState.on : ComputeServer.PowerState.off
+                log.info("UPDATE VM $cloudItem.name with power state $cloudItem.status")
 
                 Map serverFieldValueMap = [
                         hostname   : cloudItem.name,
