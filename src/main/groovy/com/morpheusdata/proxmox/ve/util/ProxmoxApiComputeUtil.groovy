@@ -63,14 +63,6 @@ class ProxmoxApiComputeUtil {
             ]
 
             newVolumes.each { vol ->
-                log.info("Volume Device: $vol.deviceName")
-                log.info("Volume Device Display: $vol.deviceDisplayName")
-                log.info("Volume Size: $vol.maxStorage")
-                log.info("Volume ExtId: $vol.externalId")
-                log.info("Volume Name: $vol.name")
-                log.info("Volume ID: $vol.id")
-                log.info("Volume Datastore: $vol.datastore")
-                //log.info("Volume Datastore ExtId: $vol.datastore.externalId")
                 def size = "${vol.maxStorage as Long / 1024 / 1024 / 1024}"
                 diskAddOpts.body["$vol.deviceName"] = "${vol.datastore.externalId}:$size,size=${size}G"
             }
