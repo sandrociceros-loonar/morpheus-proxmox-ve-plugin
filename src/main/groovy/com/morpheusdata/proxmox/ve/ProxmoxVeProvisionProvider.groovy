@@ -106,10 +106,10 @@ class ProxmoxVeProvisionProvider extends AbstractProvisionProvider implements Vm
 	@Override
 	ServiceResponse<PrepareWorkloadResponse> prepareWorkload(Workload workload, WorkloadRequest workloadRequest, Map opts) {
 		ServiceResponse<PrepareWorkloadResponse> resp = new ServiceResponse<PrepareWorkloadResponse>(
-			true, // successful
-			'', // no message
-			null, // no errors
-			new PrepareWorkloadResponse(workload:workload) // adding the workload to the response for convenience
+				true, // successful
+				'', // no message
+				null, // no errors
+				new PrepareWorkloadResponse(workload:workload) // adding the workload to the response for convenience
 		)
 		return resp
 	}
@@ -141,8 +141,8 @@ class ProxmoxVeProvisionProvider extends AbstractProvisionProvider implements Vm
 	 * @return Collection of OptionTypes
 	 */
 	@Override
-        Collection<OptionType> getOptionTypes() {
-                def options = []
+	Collection<OptionType> getOptionTypes() {
+		def options = []
 
 
 		options << new OptionType(
@@ -232,7 +232,7 @@ class ProxmoxVeProvisionProvider extends AbstractProvisionProvider implements Vm
 		)
 
 		return volumeTypes
-	} 
+	}
 
 	/**
 	 * Provides a Collection of ${@link ServicePlan} related to this ProvisionProvider that can be seeded in.
@@ -248,8 +248,8 @@ class ProxmoxVeProvisionProvider extends AbstractProvisionProvider implements Vm
 		//								 customMaxStorage:true, customMaxDataStorage:true, addVolumes:true])
 
 		plans << new ServicePlan([code:'proxmox-ve-vm-1024', name:'1 vCPU, 1GB Memory', description:'1 vCPU, 1GB Memory', sortOrder:1,
-										 maxStorage: 10l * 1024l * 1024l * 1024l, maxMemory: 1l * 1024l * 1024l * 1024l, maxCores:1,
-										 customMaxStorage:true, customMaxDataStorage:true, addVolumes:true])
+								  maxStorage: 10l * 1024l * 1024l * 1024l, maxMemory: 1l * 1024l * 1024l * 1024l, maxCores:1,
+								  customMaxStorage:true, customMaxDataStorage:true, addVolumes:true])
 
 		plans << new ServicePlan([code:'proxmox-ve-vm-2048', name:'1 vCPU, 2GB Memory', description:'1 vCPU, 2GB Memory', sortOrder:2,
 								  maxStorage: 20l * 1024l * 1024l * 1024l, maxMemory: 2l * 1024l * 1024l * 1024l, maxCores:1,
@@ -276,20 +276,20 @@ class ProxmoxVeProvisionProvider extends AbstractProvisionProvider implements Vm
 								  customMaxStorage:true, customMaxDataStorage:true, addVolumes:true])
 
 		plans << new ServicePlan([code:'proxmox-ve-vm-16384', name:'2 vCPU, 16GB Memory', description:'2 vCPU, 16GB Memory', sortOrder:5,
-										 maxStorage: 160l * 1024l * 1024l * 1024l, maxMemory: 16l * 1024l * 1024l * 1024l, maxCores:2,
-										 customMaxStorage:true, customMaxDataStorage:true, addVolumes:true])
+								  maxStorage: 160l * 1024l * 1024l * 1024l, maxMemory: 16l * 1024l * 1024l * 1024l, maxCores:2,
+								  customMaxStorage:true, customMaxDataStorage:true, addVolumes:true])
 
 		plans << new ServicePlan([code:'proxmox-ve-vm-24576', name:'4 vCPU, 24GB Memory', description:'4 vCPU, 24GB Memory', sortOrder:6,
-										 maxStorage: 240l * 1024l * 1024l * 1024l, maxMemory: 24l * 1024l * 1024l * 1024l, maxCores:4,
-										 customMaxStorage:true, customMaxDataStorage:true, addVolumes:true])
+								  maxStorage: 240l * 1024l * 1024l * 1024l, maxMemory: 24l * 1024l * 1024l * 1024l, maxCores:4,
+								  customMaxStorage:true, customMaxDataStorage:true, addVolumes:true])
 
 		plans << new ServicePlan([code:'proxmox-ve-vm-32768', name:'4 vCPU, 32GB Memory', description:'4 vCPU, 32GB Memory', sortOrder:7,
-										 maxStorage: 320l * 1024l * 1024l * 1024l, maxMemory: 32l * 1024l * 1024l * 1024l, maxCores:4,
-										 customMaxStorage:true, customMaxDataStorage:true, addVolumes:true])
+								  maxStorage: 320l * 1024l * 1024l * 1024l, maxMemory: 32l * 1024l * 1024l * 1024l, maxCores:4,
+								  customMaxStorage:true, customMaxDataStorage:true, addVolumes:true])
 
 		plans << new ServicePlan([code:'proxmox-ve-internal-custom', editable:false, name:'Proxmox Custom', description:'Proxmox Custom', sortOrder:0,
-										 customMaxStorage:true, customMaxDataStorage:true, addVolumes:true, customCpu: true, customCores: true, customMaxMemory: true, deletable: false, provisionable: false,
-										 maxStorage:0l, maxMemory: 0l,  maxCpu:0])
+								  customMaxStorage:true, customMaxDataStorage:true, addVolumes:true, customCpu: true, customCores: true, customMaxMemory: true, deletable: false, provisionable: false,
+								  maxStorage:0l, maxMemory: 0l,  maxCpu:0])
 		return plans
 	}
 
@@ -302,19 +302,19 @@ class ProxmoxVeProvisionProvider extends AbstractProvisionProvider implements Vm
 	 * message as the value.
 	 */
 	@Override
-        ServiceResponse validateWorkload(Map opts) {
-                log.debug("VALIDATION OPTS: $opts")
-                def rtn =  new ServiceResponse(true, null, [:], null)
+	ServiceResponse validateWorkload(Map opts) {
+		log.debug("VALIDATION OPTS: $opts")
+		def rtn =  new ServiceResponse(true, null, [:], null)
 
-                HttpApiClient client = new HttpApiClient()
-                Cloud cloud = context.async.cloud.get(opts.zoneId?.toLong()).blockingGet()
-                ComputeServer selectedNode = getHypervisorHostByExternalId(cloud.id, opts.config.proxmoxNode)
-                if(selectedNode && selectedNode.powerState != ComputeServer.PowerState.on) {
-                        rtn.success = false
-                        rtn.errors = [field: 'proxmoxNode', msg: 'This Proxmox node is currently inactive. Please select an active node.']
-                        return rtn
-                }
-                Map authConfig = plugin.getAuthConfig(cloud)
+		HttpApiClient client = new HttpApiClient()
+		Cloud cloud = context.async.cloud.get(opts.zoneId?.toLong()).blockingGet()
+		ComputeServer selectedNode = getHypervisorHostByExternalId(cloud.id, opts.config.proxmoxNode)
+		if(selectedNode && selectedNode.powerState != ComputeServer.PowerState.on) {
+			rtn.success = false
+			rtn.errors = [field: 'proxmoxNode', msg: 'This Proxmox node is currently inactive. Please select an active node.']
+			return rtn
+		}
+		Map authConfig = plugin.getAuthConfig(cloud)
 
 		List<Map> wizardInterfaces = opts.networkInterfaces
 		List<Map> instanceDisks = opts.volumes
@@ -383,9 +383,9 @@ class ProxmoxVeProvisionProvider extends AbstractProvisionProvider implements Vm
 
 
 		//rtn.errors += [field: "networkInterface", msg: "Network not available on node"]
-				//"Testing provisioning halt.",
-				//["network": "Network not available on node", "storage": "Storage not availalbe on node"],
-				//"Test data"
+		//"Testing provisioning halt.",
+		//["network": "Network not available on node", "storage": "Storage not availalbe on node"],
+		//"Test data"
 		//)
 		return rtn
 	}
@@ -422,130 +422,130 @@ class ProxmoxVeProvisionProvider extends AbstractProvisionProvider implements Vm
 		log.debug("Cloud-Init User-Data Network: $workloadRequest.cloudConfigNetwork")
 
 		//try {
-			ComputeServer server = workload.server
-			Cloud cloud = server.cloud
-			VirtualImage virtualImage = server.sourceImage
-			Map authConfig = plugin.getAuthConfig(cloud)
-			HttpApiClient client = new HttpApiClient()
-			String nodeId = workload.server.getConfigProperty('proxmoxNode') ?: null
+		ComputeServer server = workload.server
+		Cloud cloud = server.cloud
+		VirtualImage virtualImage = server.sourceImage
+		Map authConfig = plugin.getAuthConfig(cloud)
+		HttpApiClient client = new HttpApiClient()
+		String nodeId = workload.server.getConfigProperty('proxmoxNode') ?: null
 
-			List<String> targetNetworks = server.getInterfaces().collect { it.network.externalId }
+		List<String> targetNetworks = server.getInterfaces().collect { it.network.externalId }
 
-			server.getInterfaces().each { ComputeServerInterface iface ->
-				log.debug("IFACE NETWORK: $iface.network.externalId")
-			}
+		server.getInterfaces().each { ComputeServerInterface iface ->
+			log.debug("IFACE NETWORK: $iface.network.externalId")
+		}
 
-			ComputeServer hvNode = getHypervisorHostByExternalId(cloud.id, nodeId)
-			if (!hvNode.sshHost || !hvNode.sshUsername || !hvNode.sshPassword) {
-				return new ServiceResponse<ProvisionResponse>(
+		ComputeServer hvNode = getHypervisorHostByExternalId(cloud.id, nodeId)
+		if (!hvNode.sshHost || !hvNode.sshUsername || !hvNode.sshPassword) {
+			return new ServiceResponse<ProvisionResponse>(
 					false,
 					"SSH credentials required on host for provisioning to work. Edit the hypervisor host properties under the cloud Hosts tab.",
 					null,
 					new ProvisionResponse(
 							success: false
 					)
-				)
-			}
+			)
+		}
 
-			DatastoreIdentity imgDS
-			try {
-				imgDS = context.cloud.datastore.getDefaultImageDatastoreForAccount(server.cloud.id, server.cloud.account.id).blockingGet()
-			} catch(e) {
-				log.info("Unable to get Default Image Datastore. Error: ${e}")
-				log.info("Getting general default datastore...")
-				imgDS = getDefaultDatastore(cloud.id)
-			}
+		DatastoreIdentity imgDS
+		try {
+			imgDS = context.cloud.datastore.getDefaultImageDatastoreForAccount(server.cloud.id, server.cloud.account.id).blockingGet()
+		} catch(e) {
+			log.info("Unable to get Default Image Datastore. Error: ${e}")
+			log.info("Getting general default datastore...")
+			imgDS = getDefaultDatastore(cloud.id)
+		}
 
-			log.info("IMAGE Datastore: $imgDS.name")
-			String imageExternalId = getOrUploadImage(client, authConfig, cloud, virtualImage, hvNode, imgDS.name)
-			if (!imageExternalId) {
-				return new ServiceResponse<ProvisionResponse>(
+		log.info("IMAGE Datastore: $imgDS.name")
+		String imageExternalId = getOrUploadImage(client, authConfig, cloud, virtualImage, hvNode, imgDS.name)
+		if (!imageExternalId) {
+			return new ServiceResponse<ProvisionResponse>(
 					false,
 					"Unable to get Image Template ExternalId, or unable to create Template.",
 					null,
 					new ProvisionResponse(
 							success: false
 					)
-				)
-			}
-
-			List<Map> existingCloneDisks = ProxmoxApiComputeUtil.getExistingVMStorage(client, authConfig, nodeId, imageExternalId)
-			int nextScsi = ProxmoxApiComputeUtil.getHighestScsiDisk(existingCloneDisks) + 1
-			String rootDiskLabel = existingCloneDisks.find { it.isRoot }?.label
-
-			server.volumes.each {vol ->
-				vol.deviceName = vol.rootVolume ? rootDiskLabel : "scsi$nextScsi"
-				if (!vol.rootVolume) nextScsi++
-				vol.externalId = vol.deviceName
-				vol.deviceDisplayName = vol.deviceName
-				if (!vol.datastore) {
-					Datastore ds = getDefaultDatastore(cloud.id)
-					vol.setDatastore((DatastoreIdentityProjection) ds)
-				}
-				context.services.storageVolume.save(vol)
-			}
-			server = saveAndGet(server)
-
-			server.computeServerType = context.async.cloud.findComputeServerTypeByCode("proxmox-qemu-vm").blockingGet()
-			server.serverOs = server.serverOs ?: virtualImage?.osType
-			server.osType = (server.serverOs?.platform == PlatformType.windows ? 'windows' : 'linux') ?: virtualImage?.platform
-			server.parentServer = hvNode
-			server.osDevice = '/dev/sda'
-			server.lvmEnabled = false
-			server.status = 'provisioned'
-			server.serverType = 'vm'
-			server.managed = true
-			server.discovered = false
-			if(server.osType == 'windows') {
-				server.guestConsoleType = ComputeServer.GuestConsoleType.rdp
-			} else if(server.osType == 'linux') {
-				server.guestConsoleType = ComputeServer.GuestConsoleType.ssh
-			}
-			server.account = cloud.getAccount()
-			server.cloud = cloud
-			server = saveAndGet(server)
-
-			log.info("Provisioning/cloning: ${workload.getInstance().name} from Image Id: $imageExternalId on node: $nodeId")
-			log.info("Provisioning/cloning: ${workload.getInstance().name} with $server.coresPerSocket cores and $server.maxMemory memory")
-
-
-			ServiceResponse rtnClone = ProxmoxApiComputeUtil.cloneTemplate(client, authConfig, imageExternalId, workload.getInstance().name, nodeId, server.maxCores, server.maxMemory, server.volumes, targetNetworks)
-
-			log.debug("VM Clone done. Results: $rtnClone")
-
-			server.internalId = rtnClone.data.vmId
-			server.externalId = rtnClone.data.vmId
-			server = saveAndGet(server)
-
-			if (!rtnClone.success) {
-				log.error("Provisioning/clone failed: $rtnClone.msg")
-				return ServiceResponse.error("Provisioning failed: $rtnClone.msg")
-			}
-
-			def installAgentAfter = false
-			//log.debug("OPTS: $opts")
-			if(virtualImage?.isCloudInit() && workloadRequest?.cloudConfigUser) {
-				log.debug(log.debug("Configuring Cloud-Init"))
-				def rootVol = server.volumes.find {it.rootVolume }
-				ProxmoxSshUtil.createCloudInitDrive(context, hvNode, workloadRequest, rtnClone.data.vmId, rootVol.datastore.externalId)
-			} else {
-				log.info("Non Cloud-Init deployment...")
-			}
-
-			ProxmoxApiComputeUtil.startVM(client, authConfig, nodeId, rtnClone.data.vmId)
-
-			return new ServiceResponse<ProvisionResponse>(
-					true,
-					"Provisioned",
-					null,
-					new ProvisionResponse(
-							success: true,
-							skipNetworkWait: false,
-							installAgent: false,
-							externalId: server.externalId,
-							noAgent: skipAgent
-					)
 			)
+		}
+
+		List<Map> existingCloneDisks = ProxmoxApiComputeUtil.getExistingVMStorage(client, authConfig, nodeId, imageExternalId)
+		int nextScsi = ProxmoxApiComputeUtil.getHighestScsiDisk(existingCloneDisks) + 1
+		String rootDiskLabel = existingCloneDisks.find { it.isRoot }?.label
+
+		server.volumes.each {vol ->
+			vol.deviceName = vol.rootVolume ? rootDiskLabel : "scsi$nextScsi"
+			if (!vol.rootVolume) nextScsi++
+			vol.externalId = vol.deviceName
+			vol.deviceDisplayName = vol.deviceName
+			if (!vol.datastore) {
+				Datastore ds = getDefaultDatastore(cloud.id)
+				vol.setDatastore((DatastoreIdentityProjection) ds)
+			}
+			context.services.storageVolume.save(vol)
+		}
+		server = saveAndGet(server)
+
+		server.computeServerType = context.async.cloud.findComputeServerTypeByCode("proxmox-qemu-vm").blockingGet()
+		server.serverOs = server.serverOs ?: virtualImage?.osType
+		server.osType = (server.serverOs?.platform == PlatformType.windows ? 'windows' : 'linux') ?: virtualImage?.platform
+		server.parentServer = hvNode
+		server.osDevice = '/dev/sda'
+		server.lvmEnabled = false
+		server.status = 'provisioned'
+		server.serverType = 'vm'
+		server.managed = true
+		server.discovered = false
+		if(server.osType == 'windows') {
+			server.guestConsoleType = ComputeServer.GuestConsoleType.rdp
+		} else if(server.osType == 'linux') {
+			server.guestConsoleType = ComputeServer.GuestConsoleType.ssh
+		}
+		server.account = cloud.getAccount()
+		server.cloud = cloud
+		server = saveAndGet(server)
+
+		log.info("Provisioning/cloning: ${workload.getInstance().name} from Image Id: $imageExternalId on node: $nodeId")
+		log.info("Provisioning/cloning: ${workload.getInstance().name} with $server.coresPerSocket cores and $server.maxMemory memory")
+
+
+		ServiceResponse rtnClone = ProxmoxApiComputeUtil.cloneTemplate(client, authConfig, imageExternalId, workload.getInstance().name, nodeId, server.maxCores, server.maxMemory, server.volumes, targetNetworks)
+
+		log.debug("VM Clone done. Results: $rtnClone")
+
+		server.internalId = rtnClone.data.vmId
+		server.externalId = rtnClone.data.vmId
+		server = saveAndGet(server)
+
+		if (!rtnClone.success) {
+			log.error("Provisioning/clone failed: $rtnClone.msg")
+			return ServiceResponse.error("Provisioning failed: $rtnClone.msg")
+		}
+
+		def installAgentAfter = false
+		//log.debug("OPTS: $opts")
+		if(virtualImage?.isCloudInit() && workloadRequest?.cloudConfigUser) {
+			log.debug(log.debug("Configuring Cloud-Init"))
+			def rootVol = server.volumes.find {it.rootVolume }
+			ProxmoxSshUtil.createCloudInitDrive(context, hvNode, workloadRequest, rtnClone.data.vmId, rootVol.datastore.externalId)
+		} else {
+			log.info("Non Cloud-Init deployment...")
+		}
+
+		ProxmoxApiComputeUtil.startVM(client, authConfig, nodeId, rtnClone.data.vmId)
+
+		return new ServiceResponse<ProvisionResponse>(
+				true,
+				"Provisioned",
+				null,
+				new ProvisionResponse(
+						success: true,
+						skipNetworkWait: false,
+						installAgent: false,
+						externalId: server.externalId,
+						noAgent: skipAgent
+				)
+		)
 		//} catch(e) {
 		//	log.error("Error during provisioning: ${e}")
 		//	return new ServiceResponse<ProvisionResponse>(
@@ -745,9 +745,9 @@ class ProxmoxVeProvisionProvider extends AbstractProvisionProvider implements Vm
 				def cloudFiles = context.async.virtualImage.getVirtualImageFiles(virtualImage).blockingGet()
 				log.debug("CloudFiles: $cloudFiles")
 				String imageFile = cloudFiles?.find { cloudFile ->
-						cloudFile.name.toLowerCase().endsWith(".qcow2") ||
-						cloudFile.name.toLowerCase().endsWith(".img") ||
-						cloudFile.name.toLowerCase().endsWith(".raw")
+					cloudFile.name.toLowerCase().endsWith(".qcow2") ||
+							cloudFile.name.toLowerCase().endsWith(".img") ||
+							cloudFile.name.toLowerCase().endsWith(".raw")
 				}
 				log.debug("ImageFile: $imageFile")
 				imageExternalId = ProxmoxSshUtil.uploadImageAndCreateTemplate(context, client, authConfig, cloud, virtualImage, hvNode, targetDS, imageFile)
@@ -1006,10 +1006,6 @@ class ProxmoxVeProvisionProvider extends AbstractProvisionProvider implements Vm
 
 		resizeWorkloadComputePlan(workload, resizeRequest, opts, resizeClient)
 		resizeWorkloadDisks(workload, resizeRequest, opts, resizeClient)
-
-
-		//resizeWorkloadComputePlan(computeServer, workload, resizeRequest, opts, resizeClient)
-		//resizeWorkloadDisks(computeServer, workload, resizeRequest, opts, resizeClient)
 		//resizeWorkloadNetworks(computeServer, workload, resizeRequest, opts, resizeClient)
 
 
