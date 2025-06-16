@@ -41,7 +41,7 @@ class NetworkSync {
 
             log.debug "BEGIN: execute NetworkSync: ${cloud.id}"
 
-            def cloudItems = ProxmoxApiComputeUtil.listProxmoxNetworks(apiClient, authConfig)
+            def cloudItems = ProxmoxApiComputeUtil.listProxmoxNetworks(apiClient, authConfig, true)
             def domainRecords = morpheusContext.async.network.listIdentityProjections(
                     new DataQuery().withFilter('typeCode', "proxmox.ve.bridge.$cloud.id")
             )

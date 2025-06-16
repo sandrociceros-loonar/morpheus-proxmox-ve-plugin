@@ -148,7 +148,6 @@ class VMSync {
 
                 // Fix power state comparison
                 def cloudPowerState = (cloudItem.status == 'running') ? ComputeServer.PowerState.on : ComputeServer.PowerState.off
-                log.info("UPDATE VM $cloudItem.name with power state $cloudItem.status")
 
                 Map serverFieldValueMap = [
                         hostname   : cloudItem.name,
@@ -184,7 +183,6 @@ class VMSync {
             
             if (updates) {
                 context.async.computeServer.bulkSave(updates).blockingGet()
-                log.info("Updated ${updates.size()} VMs")
             }
         } catch(e) {
             log.error("Error updating VM properties and stats: ${e}", e)

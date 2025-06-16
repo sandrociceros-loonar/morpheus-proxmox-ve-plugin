@@ -698,7 +698,8 @@ class ProxmoxApiComputeUtil {
     }
 
 
-    static ServiceResponse listProxmoxNetworks(HttpApiClient client, Map authConfig) {
+
+    static ServiceResponse listProxmoxNetworks(HttpApiClient client, Map authConfig, uniqueIfaces = false) {
         log.debug("listProxmoxNetworks...")
 
         Collection<Map> networks = []
@@ -740,8 +741,21 @@ class ProxmoxApiComputeUtil {
             log.warn("Failed to get SDN networks: ${e.message}")
         }
 
+        if (uniqueIfaces) {
+            Set seenIfaces = new HashSet<>()
+            List<Map> uniqueNetworks = networks.findAll { map ->
+                if (map.iface && !seenIfaces.contains(map.iface)) {
+                    seenIfaces << map.iface
+                    return true
+                }
+                return false
+            }
+            return new ServiceResponse(success: true, data: uniqueNetworks)
+        }
+
         return new ServiceResponse(success: true, data: networks)
     }
+
 
 
     static ServiceResponse getTemplateById(HttpApiClient client, Map authConfig, Long templateId) {
