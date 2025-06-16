@@ -976,8 +976,7 @@ class ProxmoxVeProvisionProvider extends AbstractProvisionProvider implements Vm
 	}
 
 
-	///MISSING LOGO issue
-	////GOTCHA that needs to be fixed. The instanceType = instance-type.proxmox in the scribe yml doesn't work
+	////Gotcha, if no logo add the below
 	@Override
 	HostType getHostType() {
 		HostType.vm
@@ -1056,6 +1055,7 @@ class ProxmoxVeProvisionProvider extends AbstractProvisionProvider implements Vm
 		}
 		return new ServiceResponse(success: true, msg: "Server resized")
 	}
+
 
 
 	ServiceResponse resizeWorkloadDisks(ComputeServer server, ResizeRequest resizeRequest, Map opts, HttpApiClient resizeClient) {
