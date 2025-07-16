@@ -8,6 +8,7 @@ buildscript {
         classpath "com.github.johnrengelman:shadow:8.1.1"
         classpath "com.morpheusdata:morpheus-plugin-gradle:$morpheusApiVersion"
         classpath "com.bertramlabs.plugins:asset-pipeline-gradle:$assetPipelineVersion"
+		classpath "org.ajoberstar:grgit:1.8.0-rc.1"
     }
 }
 
@@ -46,6 +47,7 @@ dependencies {
 	implementation "org.slf4j:slf4j-parent:$slf4jVersion"
 	implementation 'commons-net:commons-net:3.6'
 	implementation 'com.jcraft:jsch:0.1.55'
+    implementation "org.ajoberstar:grgit:1.8.0-rc.1"
 
 	// Include morpheus-core and it's dependencies
 	testImplementation 'io.reactivex.rxjava3:rxjava:3.1.7'
@@ -60,7 +62,6 @@ dependencies {
 	testImplementation "org.spockframework:spock-core"
 	testImplementation "org.spockframework:spock-junit4"  // you can remove this if your code does not rely on old JUnit 4 rules
 	testImplementation 'cglib:cglib-nodep:3.2.12'
-
 }
 
 
@@ -128,3 +129,21 @@ test {
 	}
 }
 tasks.assemble.dependsOn tasks.shadowJar
+
+// @SuppressWarnings("GradleStaticAnalysis")
+import org.ajoberstar.grgit.Grgit
+
+def git = Grgit.open(currentDir: project.rootDir)
+def gitTag = git.describe() ?: '0.0.1-SNAPSHOT' // Use apenas describe()
+version = gitTag.replaceFirst(/^v/, '')
+
+
+jar {
+    archiveBaseName.set("Proxmox8")
+    archiveVersion.set(version)
+}
+
+shadowJar {
+    archiveBaseName.set("Proxmox8")
+    archiveVersion.set(version)
+}
