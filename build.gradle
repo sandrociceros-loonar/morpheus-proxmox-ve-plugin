@@ -104,8 +104,8 @@ assets {
 
 
 task(console, dependsOn: 'classes', type: JavaExec) {
-	main = 'groovy.ui.Console'
-	classpath = sourceSets.main.compileClasspath + sourceSets.main.runtimeClasspath
+    mainClass = 'groovy.ui.Console'
+    classpath = sourceSets.main.compileClasspath + sourceSets.main.runtimeClasspath
 }
 
 test {
