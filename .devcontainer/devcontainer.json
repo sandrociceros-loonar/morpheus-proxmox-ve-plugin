@@ -1,0 +1,51 @@
+// For format details, see https://aka.ms/devcontainer.json. For config options, see the
+// README at: https://github.com/devcontainers/templates/tree/main/src/java
+{
+	"name": "Java",
+	// Or use a Dockerfile or Docker Compose file. More info: https://containers.dev/guide/dockerfile
+	"image": "mcr.microsoft.com/devcontainers/java:1-17-bookworm",
+	
+	// Configure remote Docker host
+	"workspaceMount": "type=bind,source=./,target=/workspace,consistency=cached",
+	"workspaceFolder": "/workspace",
+
+	"features": {
+		"ghcr.io/devcontainers/features/java:1": {
+			"version": "none",
+			"installMaven": "false",
+			"installGradle": "true"
+		},
+		"ghcr.io/devcontainers/features/github-cli:1": {
+			"installDirectlyFromGitHubRelease": true,
+			"version": "latest"
+		}
+	},
+
+	// Use 'forwardPorts' to make a list of ports inside the container available locally.
+	"forwardPorts": [],
+
+	// Use 'postCreateCommand' to run commands after the container is created.
+	"postCreateCommand": "java -version",
+
+	// Configure tool-specific properties.
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"vscjava.vscode-java-pack",
+				"vscjava.vscode-gradle"
+			]
+		}
+	},
+
+	// Configure remote user settings
+	"remoteUser": "vscode",
+	
+	// Configure remote Docker settings
+	"remoteEnv": {
+		"GRADLE_USER_HOME": "/workspace/.gradle",
+		"JAVA_HOME": "/usr/lib/jvm/msopenjdk-current"
+	},
+
+	// Ensure proper file permissions
+	"updateRemoteUserUID": true
+}
