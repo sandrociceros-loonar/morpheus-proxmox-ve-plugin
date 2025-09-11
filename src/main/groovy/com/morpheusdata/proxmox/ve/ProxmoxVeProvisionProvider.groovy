@@ -438,12 +438,12 @@ class ProxmoxVeProvisionProvider extends AbstractProvisionProvider implements Vm
 			ComputeServer hvNode = getHypervisorHostByExternalId(cloud.id, nodeId)
 			if (!hvNode.sshHost || !hvNode.sshUsername || !hvNode.sshPassword) {
 				return new ServiceResponse<ProvisionResponse>(
-						false,
-						"SSH credentials required on host for provisioning to work. Edit the hypervisor host properties under the cloud Hosts tab.",
-						null,
-						new ProvisionResponse(
-								success: false
-						)
+					false,
+					"SSH credentials required on host for provisioning to work. Edit the hypervisor host properties under the cloud Hosts tab.\nworkloadRequest: ${workloadRequest?.toString()} ",
+					null,
+					new ProvisionResponse(
+						success: false
+					)
 				)
 			}
 
