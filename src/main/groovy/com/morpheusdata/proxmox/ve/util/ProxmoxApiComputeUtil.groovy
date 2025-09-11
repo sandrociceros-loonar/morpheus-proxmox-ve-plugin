@@ -388,7 +388,11 @@ class ProxmoxApiComputeUtil {
 
         def vmConfigInfo = callListApiV2(client, "nodes/$nodeId/qemu/$vmId/config", authConfig).data
         def validBootDisks = ["scsi0", "virtio0", "sata0", "ide0"]
-        def bootEntries = vmConfigInfo.boot?.trim()?.replaceAll("order=", "")?.split(/[;,\s]+/)
+        def bootValue = vmConfigInfo.boot
+        if (bootValue instanceof List) {
+            bootValue = bootValue.join(',')
+        }
+        def bootEntries = bootValue?.toString()?.trim()?.replaceAll("order=", "")?.split(/[;,\s]+/)
         def bootDisk = ""
 
         def extractDiskKeys  = { config ->

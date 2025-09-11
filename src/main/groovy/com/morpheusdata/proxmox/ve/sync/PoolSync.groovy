@@ -40,28 +40,43 @@ class PoolSync {
 
 
     def execute() {
-        log.debug "PoolSync"
+    log.debug "PoolSync: Starting pool sync"
         try {
             def listResults = ProxmoxApiComputeUtil.listProxmoxPools(apiClient, plugin.getAuthConfig(cloud))
-            log.debug("Pools found: $listResults.data")
+            log.debug("PoolSync: Pools found: ${listResults?.data}")
 
-            if (listResults.success) {
+            if (listResults?.success) {
                 def cloudItems = listResults?.data
+                if (cloudItems == null) {
+                    log.error("PoolSync: cloudItems is null! listResults=${listResults}")
+                }
                 def domainRecords = morpheusContext.async.cloud.pool.listIdentityProjections(cloud.id, "proxmox.pool.${cloud.id}", null)
+                log.debug "PoolSync: domainRecords=${domainRecords}"
 
                 SyncTask<CloudPoolIdentity, Map, CloudPool> syncTask = new SyncTask<>(domainRecords, cloudItems as Collection)
                 syncTask.addMatchFunction { CloudPoolIdentity domainObject, Map cloudItem ->
+                    if (domainObject == null || cloudItem == null) {
+                        log.error("PoolSync: domainObject or cloudItem is null! domainObject=${domainObject}, cloudItem=${cloudItem}")
+                        return false
+                    }
+                    log.debug "PoolSync: Comparing domainObject.externalId=${domainObject.externalId} with cloudItem.poolid=${cloudItem.poolid}"
                     domainObject.externalId == cloudItem.poolid
                 }.onAdd { itemsToAdd ->
+                    log.info("PoolSync: Adding pools: ${itemsToAdd}")
                     addMissingPools(itemsToAdd)
                 }.onUpdate { List<SyncTask.UpdateItem<CloudPool, Map>> updateItems ->
+                    log.info("PoolSync: Updating pools: ${updateItems}")
                     //nothing here...
                 }.onDelete { removeItems ->
+                    log.info("PoolSync: Removing pools: ${removeItems}")
                     morpheusContext.async.cloud.pool.bulkRemove(removeItems).blockingGet()
                 }.start()
+            } else {
+                log.error("PoolSync: listResults.success=false or listResults is null! listResults=${listResults}")
             }
         } catch (e) {
             log.error("PoolSync error: ${e}", e)
+            log.error("PoolSync: Environment debug data: cloud=${cloud}, plugin=${plugin}, apiClient=${apiClient}, authConfig=${authConfig}")
         }
     }
 
