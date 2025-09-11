@@ -439,7 +439,7 @@ class ProxmoxVeProvisionProvider extends AbstractProvisionProvider implements Vm
 			if (!hvNode.sshHost || !hvNode.sshUsername || !hvNode.sshPassword) {
 				return new ServiceResponse<ProvisionResponse>(
 					false,
-					"SSH credentials required on host for provisioning to work. Edit the hypervisor host properties under the cloud Hosts tab.\nworkloadRequest: ${workloadRequest?.toString()} ",
+					"SSH credentials required on host for provisioning to work. Edit the hypervisor host properties under the cloud Hosts tab.\nUsuário SSH configurado: ${hvNode?.sshUsername ?: 'não definido'}\nworkloadRequest: ${workloadRequest?.toString()} ",
 					null,
 					new ProvisionResponse(
 						success: false
