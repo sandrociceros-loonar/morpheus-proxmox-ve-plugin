@@ -55,22 +55,24 @@ class PoolSync {
 
                 SyncTask<CloudPoolIdentity, Map, CloudPool> syncTask = new SyncTask<>(domainRecords, cloudItems as Collection)
                 syncTask.addMatchFunction { CloudPoolIdentity domainObject, Map cloudItem ->
-                    if (domainObject == null || cloudItem == null) {
-                        log.error("PoolSync: domainObject or cloudItem is null! domainObject=${domainObject}, cloudItem=${cloudItem}")
-                        return false
-                    }
-                    log.debug "PoolSync: Comparing domainObject.externalId=${domainObject.externalId} with cloudItem.poolid=${cloudItem.poolid}"
                     domainObject.externalId == cloudItem.poolid
-                }.onAdd { itemsToAdd ->
-                    log.info("PoolSync: Adding pools: ${itemsToAdd}")
+                }
+                .withLoadObjectDetails { List<SyncTask.UpdateItemDto<CloudPoolIdentity, Map>> updateItems ->
+                    Map<Long, SyncTask.UpdateItemDto<CloudPoolIdentity, Map>> updateItemMap = updateItems.collectEntries { [(it.existingItem.id): it] }
+                    return morpheusContext.async.cloud.pool.listById(updateItems?.collect { it.existingItem.id }).map { CloudPool pool ->
+                        new SyncTask.UpdateItem<CloudPool, Map>(existingItem: pool, masterItem: updateItemMap[pool.id].masterItem)
+                    }
+                }
+                .onAdd { itemsToAdd ->
                     addMissingPools(itemsToAdd)
-                }.onUpdate { List<SyncTask.UpdateItem<CloudPool, Map>> updateItems ->
-                    log.info("PoolSync: Updating pools: ${updateItems}")
-                    //nothing here...
-                }.onDelete { removeItems ->
-                    log.info("PoolSync: Removing pools: ${removeItems}")
+                }
+                .onUpdate { List<SyncTask.UpdateItem<CloudPool, Map>> updateItems ->
+                    // Implement update logic if needed
+                }
+                .onDelete { removeItems ->
                     morpheusContext.async.cloud.pool.bulkRemove(removeItems).blockingGet()
-                }.start()
+                }
+                .start()
             } else {
                 log.error("PoolSync: listResults.success=false or listResults is null! listResults=${listResults}")
             }
