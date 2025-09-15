@@ -77,7 +77,80 @@ class ProxmoxNetworkProvider implements NetworkProvider, CloudInitializationProv
 
 	@Override
 	Collection<OptionType> getOptionTypes() {
-		return null
+		return [
+			new OptionType(
+				name: 'Bridge de Rede',
+				code: 'proxmox.network.bridge',
+				fieldName: 'vmBridge',
+				fieldLabel: 'Bridge de Rede',
+				required: true,
+				inputType: 'text',
+				defaultValue: 'vmbr0'
+			),
+			new OptionType(
+				name: 'Gateway',
+				code: 'proxmox.network.gateway',
+				fieldName: 'gateway',
+				fieldLabel: 'Gateway',
+				required: true,
+				inputType: 'text',
+				defaultValue: '192.168.0.1'
+			),
+			new OptionType(
+				name: 'DNS Primário',
+				code: 'proxmox.network.dns1',
+				fieldName: 'dns1',
+				fieldLabel: 'DNS Primário',
+				required: true,
+				inputType: 'text',
+				defaultValue: '8.8.8.8'
+			),
+			new OptionType(
+				name: 'DNS Secundário',
+				code: 'proxmox.network.dns2',
+				fieldName: 'dns2',
+				fieldLabel: 'DNS Secundário',
+				required: false,
+				inputType: 'text',
+				defaultValue: '8.8.4.4'
+			),
+			new OptionType(
+				name: 'Netmask',
+				code: 'proxmox.network.netmask',
+				fieldName: 'netmask',
+				fieldLabel: 'Netmask (CIDR)',
+				required: true,
+				inputType: 'text',
+				defaultValue: '24'
+			),
+			new OptionType(
+				name: 'Usuário da VM',
+				code: 'proxmox.vm.user',
+				fieldName: 'vmUser',
+				fieldLabel: 'Usuário da VM',
+				required: true,
+				inputType: 'text',
+				defaultValue: 'ubuntu'
+			),
+			new OptionType(
+				name: 'Senha da VM',
+				code: 'proxmox.vm.password',
+				fieldName: 'vmPassword',
+				fieldLabel: 'Senha da VM',
+				required: true,
+				inputType: 'password',
+				defaultValue: ''
+			),
+			new OptionType(
+				name: 'Chave SSH',
+				code: 'proxmox.vm.sshkey',
+				fieldName: 'sshKeyContent',
+				fieldLabel: 'Chave SSH',
+				required: false,
+				inputType: 'text',
+				defaultValue: ''
+			)
+		]
 	}
 
 	@Override

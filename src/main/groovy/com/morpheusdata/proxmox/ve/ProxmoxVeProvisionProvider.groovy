@@ -402,164 +402,72 @@ class ProxmoxVeProvisionProvider extends AbstractProvisionProvider implements Vm
 	 */
 	@Override
 	ServiceResponse<ProvisionResponse> runWorkload(Workload workload, WorkloadRequest workloadRequest, Map opts) {
-		log.debug("In runWorkload...")
-
-		log.debug("WORKLOAD: \n $workload")
-		log.debug("WORKLOADREQUEST: \n $workloadRequest")
-		log.debug("WORKLOAD OPTS: \n $opts")
-		log.debug("SKIP AGENT INSTALL: \n $opts.config.noAgentInstall")
-
-		def skipAgent = false
-		if (opts.config.noAgentInstall?.toString()?.toLowerCase() == "true") {
-			skipAgent = true
-			workloadRequest.cloudConfigUser = workloadRequest.cloudConfigUser
-					.readLines()
-					.findAll { !it.contains('api/server-script/agentInstall') }
-					.join('\n')
-		}
-
-		log.debug("Cloud-Init User-Data User: $workloadRequest.cloudConfigUser")
-		log.debug("Cloud-Init User-Data Network: $workloadRequest.cloudConfigNetwork")
+		log.debug("In runWorkload (custom SSH logic)...")
 
 		try {
 			ComputeServer server = workload.server
 			Cloud cloud = server.cloud
 			VirtualImage virtualImage = server.sourceImage
-			Map authConfig = plugin.getAuthConfig(cloud)
-			HttpApiClient client = new HttpApiClient()
-			String nodeId = workload.server.getConfigProperty('proxmoxNode') ?: null
-
-			List<String> targetNetworks = server.getInterfaces().collect { it.network.externalId }
-
-			server.getInterfaces().each { ComputeServerInterface iface ->
-				log.debug("IFACE NETWORK: $iface.network.externalId")
-			}
-
+			String nodeId = server.getConfigProperty('proxmoxNode') ?: null
 			ComputeServer hvNode = getHypervisorHostByExternalId(cloud.id, nodeId)
 			if (!hvNode.sshHost || !hvNode.sshUsername || !hvNode.sshPassword) {
 				return new ServiceResponse<ProvisionResponse>(
 					false,
-					"SSH credentials required on host for provisioning to work. Edit the hypervisor host properties under the cloud Hosts tab.\nUsuário SSH configurado: ${hvNode?.sshUsername ?: 'não definido'}\nworkloadRequest: ${workloadRequest?.toString()} ",
-					null,
-					new ProvisionResponse(
-						success: false
-					)
-				)
-			}
-
-			DatastoreIdentity imgDS
-			try {
-				imgDS = context.cloud.datastore.getDefaultImageDatastoreForAccount(server.cloud.id, server.cloud.account.id).blockingGet()
-			} catch(e) {
-				log.info("Unable to get Default Image Datastore. Error: ${e}")
-				log.info("Getting general default datastore...")
-				imgDS = getDefaultDatastore(cloud.id)
-			}
-
-			log.info("IMAGE Datastore: $imgDS.name")
-			String imageExternalId = getOrUploadImage(client, authConfig, cloud, virtualImage, hvNode, imgDS.name)
-			if (!imageExternalId) {
-				return new ServiceResponse<ProvisionResponse>(
-						false,
-						"Unable to get Image Template ExternalId, or unable to create Template.",
-						null,
-						new ProvisionResponse(
-								success: false
-						)
-				)
-			}
-
-			List<Map> existingCloneDisks = ProxmoxApiComputeUtil.getExistingVMStorage(client, authConfig, nodeId, imageExternalId)
-			int nextScsi = ProxmoxApiComputeUtil.getHighestScsiDisk(existingCloneDisks) + 1
-			String rootDiskLabel = existingCloneDisks.find { it.isRoot }?.label
-
-			server.volumes.each {vol ->
-				vol.deviceName = vol.rootVolume ? rootDiskLabel : "scsi$nextScsi"
-				if (!vol.rootVolume) nextScsi++
-				vol.externalId = vol.deviceName
-				vol.deviceDisplayName = vol.deviceName
-				if (!vol.datastore) {
-					Datastore ds = getDefaultDatastore(cloud.id)
-					vol.setDatastore((DatastoreIdentityProjection) ds)
-				}
-				context.services.storageVolume.save(vol)
-			}
-			server = saveAndGet(server)
-
-			def ifCounter = 0
-			server.interfaces.each { ComputeServerInterface iface ->
-				iface.externalId = "net$ifCounter"
-				context.services.computeServer.computeServerInterface.save(iface)
-			}
-			server = saveAndGet(server)
-
-			server.computeServerType = context.async.cloud.findComputeServerTypeByCode("proxmox-qemu-vm").blockingGet()
-			server.serverOs = server.serverOs ?: virtualImage?.osType
-			server.osType = (server.serverOs?.platform == PlatformType.windows ? 'windows' : 'linux') ?: virtualImage?.platform
-			server.parentServer = hvNode
-			server.osDevice = '/dev/sda'
-			server.lvmEnabled = false
-			server.status = 'provisioned'
-			server.serverType = 'vm'
-			server.managed = true
-			server.discovered = false
-			if(server.osType == 'windows') {
-				server.guestConsoleType = ComputeServer.GuestConsoleType.rdp
-			} else if(server.osType == 'linux') {
-				server.guestConsoleType = ComputeServer.GuestConsoleType.ssh
-			}
-			server.account = cloud.getAccount()
-			server.cloud = cloud
-			server = saveAndGet(server)
-
-			log.info("Provisioning/cloning: ${workload.getInstance().name} from Image Id: $imageExternalId on node: $nodeId")
-			log.info("Provisioning/cloning: ${workload.getInstance().name} with $server.coresPerSocket cores and $server.maxMemory memory")
-
-
-			ServiceResponse rtnClone = ProxmoxApiComputeUtil.cloneTemplate(client, authConfig, imageExternalId, workload.getInstance().name, nodeId, server)
-
-			log.debug("VM Clone done. Results: $rtnClone")
-
-			server.internalId = rtnClone.data.vmId
-			server.externalId = rtnClone.data.vmId
-			server = saveAndGet(server)
-
-			if (!rtnClone.success) {
-				log.error("Provisioning/clone failed: $rtnClone.msg")
-				return ServiceResponse.error("Provisioning failed: $rtnClone.msg")
-			}
-
-			def installAgentAfter = false
-			//log.debug("OPTS: $opts")
-			if(virtualImage?.isCloudInit() && workloadRequest?.cloudConfigUser) {
-				log.debug(log.debug("Configuring Cloud-Init"))
-				def rootVol = server.volumes.find {it.rootVolume }
-				ProxmoxSshUtil.createCloudInitDrive(context, hvNode, workloadRequest, rtnClone.data.vmId, rootVol.datastore.externalId)
-			} else {
-				log.info("Non Cloud-Init deployment...")
-			}
-
-			ProxmoxApiComputeUtil.startVM(client, authConfig, nodeId, rtnClone.data.vmId)
-
-			return new ServiceResponse<ProvisionResponse>(
-					true,
-					"Provisioned",
-					null,
-					new ProvisionResponse(
-							success: true,
-							skipNetworkWait: false,
-							installAgent: false,
-							externalId: server.externalId,
-							noAgent: skipAgent
-					)
-			)
-		} catch(e) {
-			log.error("Error during provisioning: ${e}")
-			return new ServiceResponse<ProvisionResponse>(
-					false,
-					"Provisioning failed: ${e}",
+					"SSH credentials required on host for provisioning to work. Edit the hypervisor host properties under the cloud Hosts tab.",
 					null,
 					new ProvisionResponse(success: false)
+				)
+			}
+
+			// Parâmetros customizados vindos do NetworkProvider/OptionTypes
+			Map params = [
+				vmName: server.name,
+				vmUser: opts.config.vmUser ?: 'ubuntu',
+				vmPassword: opts.config.vmPassword ?: '',
+				vmIp: server.getInterfaces()?.find {it.primaryInterface}?.ipAddress ?: '',
+				netmask: opts.config.netmask ?: '24',
+				gateway: opts.config.gateway ?: '',
+				dns1: opts.config.dns1 ?: '',
+				dns2: opts.config.dns2 ?: '',
+				vmStorage: server.volumes?.find {it.rootVolume}?.datastore?.name ?: '',
+				vmBridge: opts.config.vmBridge ?: 'vmbr0',
+				vmMemory: server.maxMemory ?: '2048',
+				vmCores: server.coresPerSocket ?: '2',
+				vmDiskSize: server.volumes?.find {it.rootVolume}?.maxStorage ?: '20G',
+				sshKeyContent: opts.config.sshKeyContent ?: '',
+				cloudImageUrl: virtualImage?.externalUrl ?: '',
+			]
+
+			// Baixa imagem cloud se necessário
+			params.cloudImagePath = com.morpheusdata.proxmox.ve.util.ProxmoxVmProvisionSshUtil.downloadCloudImage(context, hvNode, params.cloudImageUrl)
+			// Descobre próximo VMID disponível
+			params.vmid = com.morpheusdata.proxmox.ve.util.ProxmoxVmProvisionSshUtil.findNextVmid(context, hvNode)
+			// Cria VM via SSH conforme script
+			com.morpheusdata.proxmox.ve.util.ProxmoxVmProvisionSshUtil.createVm(context, hvNode, params)
+
+			// Atualiza server.externalId
+			server.externalId = params.vmid
+			server = saveAndGet(server)
+
+			return new ServiceResponse<ProvisionResponse>(
+				true,
+				"Provisioned via SSH script logic",
+				null,
+				new ProvisionResponse(
+					success: true,
+					skipNetworkWait: false,
+					installAgent: true,
+					externalId: server.externalId,
+					noAgent: false
+				)
+			)
+		} catch(e) {
+			log.error("Error during custom SSH provisioning: ${e}", e)
+			return new ServiceResponse<ProvisionResponse>(
+				false,
+				"Provisioning failed: ${e}",
+				null,
+				new ProvisionResponse(success: false)
 			)
 		}
 	}

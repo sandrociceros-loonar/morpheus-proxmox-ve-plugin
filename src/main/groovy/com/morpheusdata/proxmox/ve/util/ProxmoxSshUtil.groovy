@@ -78,10 +78,28 @@ class ProxmoxSshUtil {
                 def diskCreateOut = context.executeSshCommand(hvNode.sshHost, 22, sanitizeSshUsername(hvNode.sshUsername), hvNode.sshPassword, "qm importdisk $imageExternalId $REMOTE_IMAGE_DIR/$fileName $targetDS", "", "", "", false, LogLevel.info, true, null, false).blockingGet()
             log.debug("Disk ImportDisk SSH Task \"qm importdisk $imageExternalId $REMOTE_IMAGE_DIR/$fileName $targetDS\" results: ${diskCreateOut.toMap().toString()}")
 
-            //Mount the disk
-            log.debug("Executing DiskMount SSH Task \"qm set $imageExternalId --scsi0 $targetDS:vm-$imageExternalId-disk-0\"")
-                def diskMountOut = context.executeSshCommand(hvNode.sshHost, 22, sanitizeSshUsername(hvNode.sshUsername), hvNode.sshPassword, "qm set $imageExternalId --scsi0 $targetDS:vm-$imageExternalId-disk-0", "", "", "", false, LogLevel.info, true, null, false).blockingGet()
-            log.debug("Disk Mount SSH Task \"qm set $imageExternalId --scsi0 $targetDS:vm-$imageExternalId-disk-0\" results: ${diskMountOut.toMap().toString()}")
+            // Remove disco ide0 se existir (Proxmox anexa por padrão após importdisk)
+            def removeIdeCmd = "qm set $imageExternalId --delete ide0"
+            log.debug("Removing default ide0 disk if present: $removeIdeCmd")
+            def removeIdeOut = context.executeSshCommand(hvNode.sshHost, 22, sanitizeSshUsername(hvNode.sshUsername), hvNode.sshPassword, removeIdeCmd, "", "", "", false, LogLevel.info, true, null, false).blockingGet()
+            log.debug("Remove ide0 results: ${removeIdeOut.toMap().toString()}")
+            // Detecta nome do disco gerado após importação (LVM Thin geralmente base-<vmid>-disk-0)
+            def diskName = "base-$imageExternalId-disk-0"
+            // Monta como scsi0 para cloud images Ubuntu
+            def diskMountCmd = "qm set $imageExternalId --scsi0 $targetDS:$diskName"
+            log.debug("Executing DiskMount SSH Task \"$diskMountCmd\"")
+            def diskMountOut = context.executeSshCommand(hvNode.sshHost, 22, sanitizeSshUsername(hvNode.sshUsername), hvNode.sshPassword, diskMountCmd, "", "", "", false, LogLevel.info, true, null, false).blockingGet()
+            log.debug("Disk Mount SSH Task \"$diskMountCmd\" results: ${diskMountOut.toMap().toString()}")
+            // Define o disco como boot
+            def bootOrderCmd = "qm set $imageExternalId --boot order=scsi0"
+            log.debug("Setting boot order: $bootOrderCmd")
+            def bootOrderOut = context.executeSshCommand(hvNode.sshHost, 22, sanitizeSshUsername(hvNode.sshUsername), hvNode.sshPassword, bootOrderCmd, "", "", "", false, LogLevel.info, true, null, false).blockingGet()
+            log.debug("Boot order set results: ${bootOrderOut.toMap().toString()}")
+            // Configura BIOS UEFI para cloud images
+            def biosCmd = "qm set $imageExternalId --bios ovmf"
+            log.debug("Setting BIOS to UEFI: $biosCmd")
+            def biosOut = context.executeSshCommand(hvNode.sshHost, 22, sanitizeSshUsername(hvNode.sshUsername), hvNode.sshPassword, biosCmd, "", "", "", false, LogLevel.info, true, null, false).blockingGet()
+            log.debug("BIOS set results: ${biosOut.toMap().toString()}")
         } finally {
             context.releaseLock(lockKey, [lock:lock]).blockingGet()
         }
